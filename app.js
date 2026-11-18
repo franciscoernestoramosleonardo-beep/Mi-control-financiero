@@ -1,5 +1,5 @@
 /* =========================================================
-   CONFIGURACIÓN
+   1️⃣ CONFIGURACIÓN
    ========================================================= */
 const STORAGE_KEYS = {
     USERS:      'cf_users',
@@ -39,7 +39,21 @@ const BANKS_RD = [
 ];
 
 /* =========================================================
-   🔥 FIREBASE — CONEXIÓN A LA NUBE
+   2️⃣ ESTADO  ← MOVIDO ARRIBA (antes de Firebase)
+   ========================================================= */
+let users = [];
+let currentUser = null;
+let appBalance = 0;
+let appHistory = [];
+let appBanks = [];
+let editingMovementId = null;
+let pendingSwitchUid = null;
+let pendingDeleteUid = null;
+let editingBankId = null;
+let _initDone = false;   // guardián para init()
+
+/* =========================================================
+   3️⃣ 🔥 FIREBASE — CONEXIÓN A LA NUBE
    ========================================================= */
 const firebaseConfig = {
     apiKey: "AIzaSyAdU1P7wY0IDaWaYoQMbAi6nZmhjn3oFyY",
@@ -144,20 +158,7 @@ async function cargarUsuarioDesdeFirebase(uid) {
 }
 
 /* =========================================================
-   ESTADO
-   ========================================================= */
-let users = [];
-let currentUser = null;
-let appBalance = 0;
-let appHistory = [];
-let appBanks = [];
-let editingMovementId = null;
-let pendingSwitchUid = null;
-let pendingDeleteUid = null;
-let editingBankId = null;
-
-/* =========================================================
-   DOM
+   4️⃣ DOM
    ========================================================= */
 const $ = id => document.getElementById(id);
 
@@ -283,7 +284,7 @@ const colorUserLabel = $('colorUserLabel');
 const helpModal = $('helpModal'), closeHelpBtn = $('closeHelpBtn');
 
 /* =========================================================
-   UTILIDADES
+   5️⃣ UTILIDADES
    ========================================================= */
 function formatRD(amount) { return 'RD$ ' + Number(amount).toFixed(2); }
 function getTodayFormatted() {
@@ -319,7 +320,7 @@ function showOperationMessage(text, isError = false) { showMsg(operationMessage,
 function showLoginMessage(text, isError = true) { showMsg(selectUserMessage, text, isError, 4000); }
 
 /* =========================================================
-   OJO CONTRASEÑAS
+   6️⃣ OJO CONTRASEÑAS
    ========================================================= */
 function setupPasswordEyes() {
     document.querySelectorAll('.eye-btn').forEach(btn => {
@@ -341,7 +342,7 @@ function setupPasswordEyes() {
 }
 
 /* =========================================================
-   VALIDACIONES
+   7️⃣ VALIDACIONES
    ========================================================= */
 function normalizeName(value) {
     let cleaned = value.replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s]/g, '');
@@ -406,7 +407,7 @@ function attachNameFormatter(input) {
 }
 
 /* =========================================================
-   PERSISTENCIA (localStorage + Firebase)
+   8️⃣ PERSISTENCIA (localStorage + Firebase)
    ========================================================= */
 function loadUsers() {
     try {
@@ -455,7 +456,7 @@ function saveUserData() {
 }
 
 /* =========================================================
-   TEMA Y COLOR POR USUARIO
+   9️⃣ TEMA Y COLOR POR USUARIO
    ========================================================= */
 function getUserTheme(uid) { return localStorage.getItem(STORAGE_KEYS.THEME + uid) || 'light'; }
 function setUserTheme(uid, theme) { localStorage.setItem(STORAGE_KEYS.THEME + uid, theme); }
@@ -488,7 +489,7 @@ function applyDefaultTheme() {
 }
 
 /* =========================================================
-   PANTALLAS
+   🔟 PANTALLAS
    ========================================================= */
 function hideAllScreens() {
     firstUserScreen.classList.add('hidden');
@@ -537,7 +538,7 @@ function showMainScreen() {
 }
 
 /* =========================================================
-   DROPDOWN
+   1️⃣1️⃣ DROPDOWN
    ========================================================= */
 function renderUserDropdown() {
     userSelectDropdown.innerHTML = '';
@@ -557,7 +558,7 @@ function renderUserDropdown() {
 }
 
 /* =========================================================
-   CREAR / LOGIN
+   1️⃣2️⃣ CREAR / LOGIN
    ========================================================= */
 function validateNewUser(name, cedula, phone, pwd, pwdConfirm) {
     if (!name || !cedula || !phone || !pwd || !pwdConfirm) return 'Todos los campos son obligatorios.';
@@ -618,7 +619,7 @@ function logout() {
 }
 
 /* =========================================================
-   CATEGORÍAS
+   1️⃣3️⃣ CATEGORÍAS
    ========================================================= */
 function fillNoteSelect(selectEl, categories) {
     selectEl.innerHTML = '';
@@ -641,7 +642,7 @@ function getNoteFromSelector(selectEl, customInput) {
 }
 
 /* =========================================================
-   SELECTOR DE BANCO DESTINO (RETIRO)
+   1️⃣4️⃣ SELECTOR DE BANCO DESTINO (RETIRO)
    ========================================================= */
 function showBankDestinationSelector() {
     withdrawBankSelect.innerHTML = '';
@@ -674,7 +675,7 @@ function hideBankDestinationSelector() {
 }
 
 /* =========================================================
-   TOTALES
+   1️⃣5️⃣ TOTALES
    ========================================================= */
 function computeTotals() {
     let totalIncome = 0, totalWithdraw = 0;
@@ -696,7 +697,7 @@ function updateTotalsDisplay() {
 }
 
 /* =========================================================
-   BANCO
+   1️⃣6️⃣ BANCO
    ========================================================= */
 function fillBankSelect() {
     bankSelect.innerHTML = '';
@@ -856,7 +857,7 @@ function deleteBankAccount(id) {
 }
 
 /* =========================================================
-   RENDER PRINCIPAL
+   1️⃣7️⃣ RENDER PRINCIPAL
    ========================================================= */
 function updateBalanceDisplay() {
     balanceDisplay.textContent = formatRD(appBalance);
@@ -989,7 +990,7 @@ function renderUsersTab() {
 }
 
 /* =========================================================
-   MODAL CAMBIAR DE USUARIO
+   1️⃣8️⃣ MODAL CAMBIAR DE USUARIO
    ========================================================= */
 function openSwitchUserModal(uid) {
     const target = users.find(u => u.id === uid);
@@ -1029,7 +1030,7 @@ function confirmSwitchUser() {
 }
 
 /* =========================================================
-   MODAL ELIMINAR USUARIO
+   1️⃣9️⃣ MODAL ELIMINAR USUARIO
    ========================================================= */
 function openDeleteUserModal(uid) {
     const target = users.find(u => u.id === uid);
@@ -1094,7 +1095,7 @@ function confirmDeleteUser() {
 }
 
 /* =========================================================
-   PESTAÑAS
+   2️⃣0️⃣ PESTAÑAS
    ========================================================= */
 function switchTab(tabName) {
     tabButtons.forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
@@ -1107,7 +1108,7 @@ function switchTab(tabName) {
 }
 
 /* =========================================================
-   MOVIMIENTOS
+   2️⃣1️⃣ MOVIMIENTOS
    ========================================================= */
 function registerIncome() {
     const amount = parseFloat(incomeAmount.value.trim());
@@ -1277,7 +1278,7 @@ function deleteMovement(id) {
 }
 
 /* =========================================================
-   LIMPIAR / RESETEAR
+   2️⃣2️⃣ LIMPIAR / RESETEAR
    ========================================================= */
 function clearHistory() {
     if (!appHistory.length) {
@@ -1329,7 +1330,7 @@ function confirmResetAll() {
 }
 
 /* =========================================================
-   CAMBIO DE CONTRASEÑA
+   2️⃣3️⃣ CAMBIO DE CONTRASEÑA
    ========================================================= */
 function changePassword() {
     const current = currentPasswordInput.value.trim();
@@ -1357,7 +1358,7 @@ function changePassword() {
 }
 
 /* =========================================================
-   COLORES
+   2️⃣4️⃣ COLORES
    ========================================================= */
 function renderColorOptions() {
     colorOptions.innerHTML = '';
@@ -1387,7 +1388,7 @@ function toggleDarkMode() {
 }
 
 /* =========================================================
-   MODAL NUEVO USUARIO
+   2️⃣5️⃣ MODAL NUEVO USUARIO
    ========================================================= */
 function openNewUserModal() {
     nuName.value = nuCedula.value = nuPhone.value = '';
@@ -1417,7 +1418,7 @@ function saveNewUserFromModal() {
 }
 
 /* =========================================================
-   EVENTOS
+   2️⃣6️⃣ EVENTOS
    ========================================================= */
 function setupEvents() {
     setupPasswordEyes();
@@ -1603,9 +1604,12 @@ function setupEvents() {
 }
 
 /* =========================================================
-   INICIO
+   2️⃣7️⃣ INICIO
    ========================================================= */
 async function init() {
+    if (_initDone) return;
+    _initDone = true;
+
     // 1️⃣ Cargar desde localStorage (rápido)
     loadUsers();
     setupEvents();
