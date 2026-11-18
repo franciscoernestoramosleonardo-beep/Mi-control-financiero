@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+<title>Control Financiero Multiusuario · RD$</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app-container" id="appContainer">
+
+    <!-- PANTALLA 1: PRIMER USUARIO -->
+    <div id="firstUserScreen" class="access-screen hidden">
+        <div class="logo-icon">👋</div>
+        <h1>Bienvenido</h1>
+        <p class="subtitle">Crea tu primer usuario para comenzar</p>
+        <div id="firstUserMessage" class="hidden"></div>
+        <div class="form-box">
+            <label>Nombre completo *</label>
+            <input type="text" id="fuName" placeholder="Ej. JUAN PÉREZ" maxlength="60">
+            <span class="field-hint">Solo mayúsculas y letras</span>
+            <label>Cédula *</label>
+            <input type="text" id="fuCedula" placeholder="000-0000000-0" maxlength="13">
+            <span class="field-hint">Formato: 000-0000000-0</span>
+            <label>Teléfono *</label>
+            <input type="text" id="fuPhone" placeholder="809-000-0000" maxlength="12">
+            <span class="field-hint">Solo áreas 809, 829 y 849</span>
+            <label>Contraseña * (mín. 4 caracteres)</label>
+            <div class="password-wrapper">
+                <input type="password" id="fuPassword" placeholder="••••••••">
+                <button type="button" class="eye-btn" data-eye="fuPassword" title="Mostrar/ocultar">👁️</button>
+            </div>
+            <label>Confirmar contraseña *</label>
+            <div class="password-wrapper">
+                <input type="password" id="fuPasswordConfirm" placeholder="••••••••">
+                <button type="button" class="eye-btn" data-eye="fuPasswordConfirm" title="Mostrar/ocultar">👁️</button>
+            </div>
+            <button class="btn btn-primary" id="fuCreateBtn" style="margin-top:8px;">Crear usuario</button>
+        </div>
+        <div class="warning-note">
+            ⚠️ Los datos se guardan en este navegador. Si borras los datos del navegador, perderás todo.
+        </div>
+    </div>
+
+    <!-- PANTALLA 2: SELECCIÓN DE USUARIO -->
+    <div id="selectUserScreen" class="access-screen hidden">
+        <div class="logo-icon">🔐</div>
+        <h1>Selecciona tu usuario</h1>
+        <p class="subtitle">Elige un usuario y ingresa tu contraseña</p>
+        <div id="selectUserMessage" class="hidden"></div>
+        <div class="form-box">
+            <label>Usuario</label>
+            <select id="userSelectDropdown"></select>
+            <label>Contraseña</label>
+            <div class="password-wrapper">
+                <input type="password" id="userLoginPassword" placeholder="••••••••">
+                <button type="button" class="eye-btn" data-eye="userLoginPassword" title="Mostrar/ocultar">👁️</button>
+            </div>
+            <button class="btn btn-primary" id="userLoginBtn" style="margin-top:8px;">Ingresar</button>
+        </div>
+        <div class="divider">o</div>
+        <button class="btn btn-outline" id="goToCreateUserBtn">➕ Crear nuevo usuario</button>
+    </div>
+
+    <!-- PANTALLA 3: CREAR NUEVO USUARIO -->
+    <div id="createUserScreen" class="access-screen hidden">
+        <div class="logo-icon">➕</div>
+        <h1>Nuevo usuario</h1>
+        <p class="subtitle">Completa los datos del nuevo cliente</p>
+        <div id="createUserMessage" class="hidden"></div>
+        <div class="form-box">
+            <label>Nombre completo *</label>
+            <input type="text" id="cuName" placeholder="Ej. MARÍA LÓPEZ" maxlength="60">
+            <span class="field-hint">Solo mayúsculas y letras</span>
+            <label>Cédula *</label>
+            <input type="text" id="cuCedula" placeholder="000-0000000-0" maxlength="13">
+            <span class="field-hint">Formato: 000-0000000-0</span>
+            <label>Teléfono *</label>
+            <input type="text" id="cuPhone" placeholder="809-000-0000" maxlength="12">
+            <span class="field-hint">Solo áreas 809, 829 y 849</span>
+            <label>Contraseña * (mín. 4 caracteres)</label>
+            <div class="password-wrapper">
+                <input type="password" id="cuPassword" placeholder="••••••••">
+                <button type="button" class="eye-btn" data-eye="cuPassword" title="Mostrar/ocultar">👁️</button>
+            </div>
+            <label>Confirmar contraseña *</label>
+            <div class="password-wrapper">
+                <input type="password" id="cuPasswordConfirm" placeholder="••••••••">
+                <button type="button" class="eye-btn" data-eye="cuPasswordConfirm" title="Mostrar/ocultar">👁️</button>
+            </div>
+            <button class="btn btn-primary" id="cuCreateBtn" style="margin-top:8px;">Crear usuario</button>
+        </div>
+        <button class="btn btn-outline" id="cuCancelBtn" style="margin-top:12px;">← Volver</button>
+    </div>
+
+    <!-- APLICACIÓN PRINCIPAL -->
+    <div id="mainScreen" class="hidden">
+        <div class="app-header">
+            <div class="header-top">
+                <h1>💰 Control Financiero</h1>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <button class="header-bank-badge" id="headerBankBadge" title="Ver cuentas bancarias">
+                        <span class="badge-title">🏦 Total en banco</span>
+                        <span class="badge-amount" id="headerBankTotal">RD$ 0.00</span>
+                        <span class="badge-bank" id="headerBankName">Sin cuentas</span>
+                    </button>
+                    <button class="icon-btn" id="settingsBtn" title="Configuración">⚙️</button>
+                </div>
+            </div>
+            <div class="header-user">
+                <span>👤 <b id="currentUserName">—</b></span>
+                <span>🆔 <span id="currentUserCedula">—</span></span>
+                <span>📞 <span id="currentUserPhone">—</span></span>
+            </div>
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="inicio">🏠 Inicio</button>
+                <button class="tab-btn" data-tab="historial">📋 Historial</button>
+                <button class="tab-btn" data-tab="banco">🏦 Banco</button>
+                <button class="tab-btn" data-tab="usuarios">👥 Usuarios</button>
+            </div>
+        </div>
+
+        <!-- PESTAÑA INICIO -->
+        <div class="tab-content active" id="tab-inicio">
+            <div class="balance-card">
+                <div class="balance-label">Saldo actual</div>
+                <div class="balance-amount" id="balanceDisplay">RD$ 0.00</div>
+                <div class="balance-date" id="currentDateDisplay">--</div>
+            </div>
+            <div class="daily-summary">
+                <div class="summary-box">
+                    <div class="label">Ingresos hoy</div>
+                    <div class="value success" id="todayIncome">RD$ 0.00</div>
+                </div>
+                <div class="summary-box">
+                    <div class="label">Retiros hoy</div>
+                    <div class="value danger" id="todayWithdraw">RD$ 0.00</div>
+                </div>
+            </div>
+            <div class="op-card income" id="incomeCard">
+                <div class="op-card-header">
+                    <span class="icon">✅</span>
+                    <span>Registrar Ingreso</span>
+                </div>
+                <div class="op-row">
+                    <input type="number" id="incomeAmount" placeholder="Cantidad RD$" min="0.01" step="0.01" autocomplete="off">
+                    <button class="btn btn-success" id="incomeSubmitBtn">Agregar</button>
+                </div>
+                <div class="note-selector">
+                    <select id="incomeNoteSelect"></select>
+                    <input type="text" id="incomeNoteCustom" placeholder="Escribe el detalle (opcional)" maxlength="80" class="hidden">
+                </div>
+                <div class="op-card-note">El ingreso se suma automáticamente a tu saldo.</div>
+            </div>
+            <div class="op-card withdraw" id="withdrawCard">
+                <div class="op-card-header">
+                    <span class="icon">💸</span>
+                    <span>Registrar Retiro</span>
+                </div>
+                <div class="op-row">
+                    <input type="number" id="withdrawAmount" placeholder="Cantidad RD$" min="0.01" step="0.01" autocomplete="off">
+                    <button class="btn btn-danger" id="withdrawSubmitBtn">Retirar</button>
+                </div>
+                <div class="note-selector">
+                    <select id="withdrawNoteSelect"></select>
+                    <input type="text" id="withdrawNoteCustom" placeholder="Escribe el detalle (opcional)" maxlength="80" class="hidden">
+                    <!-- Selector de banco destino (solo si categoría = Banco) -->
+                    <div class="bank-destination-wrapper hidden" id="bankDestinationWrapper">
+                        <label for="withdrawBankSelect">🏦 ¿A qué banco llevas el dinero?</label>
+                        <select id="withdrawBankSelect"></select>
+                        <div class="bank-destination-info" id="bankDestinationInfo"></div>
+                    </div>
+                </div>
+                <div class="op-card-note" id="withdrawCardNote">
+                    Solo puedes retirar hasta el saldo disponible.
+                </div>
+            </div>
+            <div id="operationMessage" class="hidden"></div>
+            <div class="warning-note">
+                ⚠️ Los datos se guardan en este navegador. Si borras los datos del navegador, perderás el historial y el saldo.
+            </div>
+        </div>
+
+        <!-- PESTAÑA HISTORIAL -->
+        <div class="tab-content" id="tab-historial">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+                <h2 style="font-size:1.2rem;">📋 Historial de <span id="historyUserName">—</span></h2>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button class="btn btn-outline btn-sm" id="clearHistoryBtn">🗑️ Limpiar historial</button>
+                    <button class="btn btn-danger btn-sm" id="resetAllHistoryBtn">🔄 Resetear todo a cero</button>
+                </div>
+            </div>
+            <div class="totals-grid">
+                <div class="total-box income">
+                    <div class="label">Total Ingresos</div>
+                    <div class="value success" id="totalIncomeDisplay">RD$ 0.00</div>
+                </div>
+                <div class="total-box withdraw">
+                    <div class="label">Total Retiros</div>
+                    <div class="value danger" id="totalWithdrawDisplay">RD$ 0.00</div>
+                </div>
+                <div class="total-box balance">
+                    <div class="label">Balance</div>
+                    <div class="value primary" id="totalBalanceDisplay">RD$ 0.00</div>
+                </div>
+            </div>
+            <ul class="history-list" id="historyList"></ul>
+        </div>
+
+        <!-- PESTAÑA BANCO -->
+        <div class="tab-content" id="tab-banco">
+            <div class="bank-summary-card">
+                <div>
+                    <div class="label">Total en banco</div>
+                    <div class="amount" id="bankTotalDisplay">RD$ 0.00</div>
+                    <div class="bank-hint" id="bankHintDisplay">—</div>
+                </div>
+                <div class="count-badge" id="bankCountBadge">0 cuentas</div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+                <h2 style="font-size:1.2rem;">🏦 Mis cuentas bancarias</h2>
+                <button class="btn btn-primary btn-sm" id="addBankBtn">➕ Agregar cuenta</button>
+            </div>
+
+            <div id="bankListContainer"></div>
+            <div id="bankMessage" class="hidden"></div>
+
+            <div class="warning-note" style="margin-top:20px;">
+                💡 Aquí solo registras el monto que tienes en cada banco. Esta información es independiente del saldo de la pestaña Inicio (que es el efectivo/control diario).
+            </div>
+        </div>
+
+        <!-- PESTAÑA USUARIOS -->
+        <div class="tab-content" id="tab-usuarios">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+                <h2 style="font-size:1.2rem;">👥 Usuarios</h2>
+                <button class="btn btn-primary btn-sm" id="addUserFromTabBtn">➕ Nuevo usuario</button>
+            </div>
+            <div id="usersListContainer"></div>
+            <div id="usersTabMessage" class="hidden"></div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL AGREGAR/EDITAR CUENTA BANCARIA -->
+<div class="modal-overlay" id="bankModal">
+    <div class="modal-content">
+        <div class="modal-title" id="bankModalTitle">🏦 Agregar cuenta bancaria</div>
+        <div id="bankModalMessage" class="hidden"></div>
+        <label for="bankSelect">Banco *</label>
+        <select id="bankSelect"></select>
+        <label for="bankAmount">Monto (RD$) *</label>
+        <input type="number" id="bankAmount" placeholder="0.00" min="0.01" step="0.01" autocomplete="off">
+        <div class="modal-actions">
+            <button class="btn btn-outline" id="cancelBankBtn">Cancelar</button>
+            <button class="btn btn-primary" id="saveBankBtn">Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL CAMBIAR DE USUARIO -->
+<div class="modal-overlay" id="switchUserModal">
+    <div class="modal-content">
+        <div class="modal-title">🔐 Cambiar de usuario</div>
+        <p id="switchUserSubtitle" style="font-size:.9rem; color:var(--text-muted); margin-bottom:14px;"></p>
+        <div id="switchUserMessage" class="hidden"></div>
+        <label>Contraseña</label>
+        <div class="password-wrapper">
+            <input type="password" id="switchUserPassword" placeholder="••••••••" autocomplete="off">
+            <button type="button" class="eye-btn" data-eye="switchUserPassword" title="Mostrar/ocultar">👁️</button>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" id="cancelSwitchUserBtn">Cancelar</button>
+            <button class="btn btn-primary" id="confirmSwitchUserBtn">Entrar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL ELIMINAR USUARIO -->
+<div class="modal-overlay" id="deleteUserModal">
+    <div class="modal-content">
+        <div class="modal-title">🗑️ Eliminar usuario</div>
+        <p id="deleteUserSubtitle" style="font-size:.9rem; color:var(--text-muted); margin-bottom:14px;"></p>
+        <p style="font-size:.85rem; color:var(--danger); margin-bottom:14px; font-weight:500;">
+            ⚠️ Se borrarán su saldo, su historial, sus colores y sus cuentas bancarias. Esta acción no se puede deshacer.
+        </p>
+        <div id="deleteUserMessage" class="hidden"></div>
+        <label>Ingresa TU contraseña para confirmar</label>
+        <div class="password-wrapper">
+            <input type="password" id="deleteUserPassword" placeholder="••••••••" autocomplete="off">
+            <button type="button" class="eye-btn" data-eye="deleteUserPassword" title="Mostrar/ocultar">👁️</button>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" id="cancelDeleteUserBtn">Cancelar</button>
+            <button class="btn btn-danger" id="confirmDeleteUserBtn">Sí, eliminar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL EDITAR MOVIMIENTO -->
+<div class="modal-overlay" id="movementModal">
+    <div class="modal-content">
+        <div class="modal-title" id="modalMovementTitle">Editar movimiento</div>
+        <label for="movementAmount">Cantidad (RD$)</label>
+        <input type="number" id="movementAmount" placeholder="0.00" min="0.01" step="0.01" autocomplete="off">
+        <label for="movementNote">Nota (opcional)</label>
+        <input type="text" id="movementNote" placeholder="Ej. Pago de servicio" maxlength="80">
+        <div id="movementError" class="hidden message message-error"></div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" id="cancelMovementBtn">Cancelar</button>
+            <button class="btn btn-primary" id="saveMovementBtn">Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL CREAR USUARIO -->
+<div class="modal-overlay" id="newUserModal">
+    <div class="modal-content">
+        <div class="modal-title">➕ Nuevo usuario</div>
+        <div id="newUserModalMessage" class="hidden"></div>
+        <label>Nombre completo *</label>
+        <input type="text" id="nuName" placeholder="Ej. CARLOS RAMÍREZ" maxlength="60">
+        <span class="field-hint">Solo mayúsculas y letras</span>
+        <label>Cédula *</label>
+        <input type="text" id="nuCedula" placeholder="000-0000000-0" maxlength="13">
+        <span class="field-hint">Formato: 000-0000000-0</span>
+        <label>Teléfono *</label>
+        <input type="text" id="nuPhone" placeholder="809-000-0000" maxlength="12">
+        <span class="field-hint">Solo áreas 809, 829 y 849</span>
+        <label>Contraseña * (mín. 4 caracteres)</label>
+        <div class="password-wrapper">
+            <input type="password" id="nuPassword" placeholder="••••••••">
+            <button type="button" class="eye-btn" data-eye="nuPassword" title="Mostrar/ocultar">👁️</button>
+        </div>
+        <label>Confirmar contraseña *</label>
+        <div class="password-wrapper">
+            <input type="password" id="nuPasswordConfirm" placeholder="••••••••">
+            <button type="button" class="eye-btn" data-eye="nuPasswordConfirm" title="Mostrar/ocultar">👁️</button>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" id="cancelNewUserBtn">Cancelar</button>
+            <button class="btn btn-primary" id="saveNewUserBtn">Crear</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL RESETEAR TODO -->
+<div class="modal-overlay" id="resetConfirmModal">
+    <div class="modal-content">
+        <div class="modal-title">🔄 Resetear todo a cero</div>
+        <p style="font-size:.9rem; color:var(--text-muted); margin-bottom:14px;">
+            Esta acción pondrá el <b>saldo en RD$ 0.00</b> y borrará <b>todo el historial</b> del usuario actual.
+            La contraseña, los colores y las cuentas bancarias se mantienen. Ingresa tu contraseña para confirmar.
+        </p>
+        <div id="resetConfirmMessage" class="hidden"></div>
+        <label for="resetPasswordInput">Contraseña</label>
+        <div class="password-wrapper">
+            <input type="password" id="resetPasswordInput" placeholder="••••••••" autocomplete="off">
+            <button type="button" class="eye-btn" data-eye="resetPasswordInput" title="Mostrar/ocultar">👁️</button>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" id="cancelResetBtn">Cancelar</button>
+            <button class="btn btn-danger" id="confirmResetBtn">Sí, resetear todo</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL CONFIGURACIÓN -->
+<div class="modal-overlay" id="settingsModal">
+    <div class="modal-content">
+        <div class="modal-title">⚙️ Configuración</div>
+        <div class="settings-menu">
+            <button class="settings-item" id="openPasswordBtn">
+                <span class="icon">🔑</span>
+                <span class="info">
+                    <div class="title">Cambiar contraseña</div>
+                    <div class="desc">Actualiza la contraseña del usuario actual</div>
+                </span>
+            </button>
+            <button class="settings-item" id="openColorsBtn">
+                <span class="icon">🎨</span>
+                <span class="info">
+                    <div class="title">Colores y tema</div>
+                    <div class="desc">Personaliza la apariencia (solo para este usuario)</div>
+                </span>
+            </button>
+            <button class="settings-item" id="openHelpBtn">
+                <span class="icon">❓</span>
+                <span class="info">
+                    <div class="title">Ayuda</div>
+                    <div class="desc">Cómo usar la aplicación</div>
+                </span>
+            </button>
+            <button class="settings-item" id="logoutBtn" style="border-color:var(--danger);">
+                <span class="icon">🚪</span>
+                <span class="info">
+                    <div class="title" style="color:var(--danger);">Cerrar sesión</div>
+                    <div class="desc">Volver a la selección de usuario</div>
+                </span>
+            </button>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" id="closeSettingsBtn">Cerrar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL CAMBIAR CONTRASEÑA -->
+<div class="modal-overlay" id="passwordModal">
+    <div class="modal-content">
+        <div class="modal-title">🔑 Cambiar contraseña</div>
+        <div id="passwordChangeMessage" class="hidden"></div>
+        <label>Contraseña actual</label>
+        <div class="password-wrapper">
+            <input type="password" id="currentPassword" placeholder="••••••••">
+            <button type="button" class="eye-btn" data-eye="currentPassword" title="Mostrar/ocultar">👁️</button>
+        </div>
+        <label>Nueva contraseña (mín. 4 caracteres)</label>
+        <div class="password-wrapper">
+            <input type="password" id="newPassword" placeholder="••••••••">
+            <button type="button" class="eye-btn" data-eye="newPassword" title="Mostrar/ocultar">👁️</button>
+        </div>
+        <label>Confirmar nueva contraseña</label>
+        <div class="password-wrapper">
+            <input type="password" id="confirmNewPassword" placeholder="••••••••">
+            <button type="button" class="eye-btn" data-eye="confirmNewPassword" title="Mostrar/ocultar">👁️</button>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" id="cancelPasswordBtn">Cancelar</button>
+            <button class="btn btn-primary" id="savePasswordBtn">Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL COLORES -->
+<div class="modal-overlay" id="colorsModal">
+    <div class="modal-content">
+        <div class="modal-title">🎨 Colores y tema</div>
+        <p style="font-size:.88rem; color:var(--text-muted); margin-bottom:14px;">
+            Elige el color principal para <b id="colorUserLabel">este usuario</b>. Solo se aplicará a esta cuenta.
+        </p>
+        <div class="color-options" id="colorOptions"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding:14px; background:var(--bg-soft); border-radius:14px;">
+            <span style="font-weight:600;">🌙 Modo oscuro</span>
+            <button class="btn btn-outline btn-sm" id="toggleDarkBtn" style="width:auto;">Activar</button>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" id="closeColorsBtn">Cerrar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL AYUDA -->
+<div class="modal-overlay" id="helpModal">
+    <div class="modal-content">
+        <div class="modal-title">❓ Ayuda</div>
+        <ul class="help-list">
+            <li><b>👥 Multiusuario:</b> cada usuario tiene su propio saldo, historial, contraseña, colores y cuentas bancarias.</li>
+            <li><b>🏦 Banco:</b> registra el monto que tienes en cada banco. El total y el banco principal aparecen en la esquina superior derecha.</li>
+            <li><b>💸 Retiro a banco:</b> si eliges la categoría "🏦 Banco" al retirar, se te pedirá a qué banco llevarás el dinero. El monto se sumará automáticamente a esa cuenta bancaria.</li>
+            <li><b>🎨 Colores individuales:</b> cada usuario elige su color y su modo oscuro por separado.</li>
+            <li><b>👁️ Ojo:</b> en todos los campos de contraseña puedes pulsar el ojo para mostrar/ocultar.</li>
+            <li><b>🚫 Retiros:</b> no se permite retirar más de lo que tienes en el saldo.</li>
+            <li><b>📋 Historial:</b> totales, y en cada retiro el saldo que queda después de ese retiro.</li>
+            <li><b>🗑️ Eliminar usuario:</b> pide tu contraseña para confirmar.</li>
+            <li><b>🔄 Resetear todo a cero:</b> pide contraseña y pone saldo + historial en cero (mantiene banco y colores).</li>
+        </ul>
+        <div class="modal-actions">
+            <button class="btn btn-primary" id="closeHelpBtn">Entendido</button>
+        </div>
+    </div>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+<script src="app.js"></script>
+</body>
+</html>
