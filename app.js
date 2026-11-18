@@ -52,76 +52,93 @@ const firebaseConfig = {
 
 let db = null;
 try {
-    if (typeof firebase !== 'undefined') {
+    if (typeof firebase !== 'undefined' && firebase.initializeApp) {
         const fbApp = firebase.initializeApp(firebaseConfig);
         db = firebase.firestore(fbApp);
-        console.log("🔥 Firebase conectado correctamente");
+        console.log("🔥 Firebase conectado correctamente. Proyecto:", firebaseConfig.projectId);
     } else {
-        console.log("⚠️ SDK de Firebase no cargado, usando solo localStorage");
+        console.warn("⚠️ SDK de Firebase NO cargado. Revisa el orden de los <script> en index.html.");
     }
 } catch (e) {
-    console.log("⚠️ Firebase no disponible:", e.message);
+    console.error("⚠️ Error inicializando Firebase:", e);
 }
 
 // Guardar lista de usuarios en Firebase
 async function guardarUsuariosEnFirebase() {
-    if (!db) return;
+    if (!db) { console.warn("⚠️ guardarUsuariosEnFirebase: db es null"); return; }
     try {
         await db.collection('app_data').doc('usuarios').set({
             usuarios: users,
-            actualizado: new Date()
+            actualizado: firebase.firestore.FieldValue.serverTimestamp()
         });
-        console.log("☁️ Usuarios sincronizados en Firebase");
+        console.log(`☁️ Usuarios guardados en Firebase (${users.length} usuarios)`);
     } catch (e) {
-        console.log("⚠️ No se pudo sincronizar usuarios:", e.message);
+        console.error("❌ Error guardando usuarios en Firebase:", e.message);
     }
 }
 
 // Cargar lista de usuarios desde Firebase
 async function cargarUsuariosDesdeFirebase() {
-    if (!db) return false;
+    if (!db) { console.warn("⚠️ cargarUsuariosDesdeFirebase: db es null"); return false; }
     try {
         const doc = await db.collection('app_data').doc('usuarios').get();
         if (doc.exists && doc.data().usuarios) {
             users = doc.data().usuarios;
+            console.log(`☁️ ${users.length} usuarios cargados desde Firebase`);
             return true;
         }
+        console.log("☁️ No hay usuarios en Firebase todavía");
     } catch (e) {
-        console.log("⚠️ No se pudo cargar usuarios:", e.message);
+        console.error("❌ Error cargando usuarios desde Firebase:", e.message);
     }
     return false;
 }
 
 // Guardar datos financieros del usuario en Firebase
 async function guardarUsuarioEnFirebase(uid) {
-    if (!db || !uid) return;
+    if (!db) { console.warn("⚠️ guardarUsuarioEnFirebase: db es null"); return; }
+    if (!uid) { console.warn("⚠️ guardarUsuarioEnFirebase: uid vacío"); return; }
     try {
-        await db.collection('usuarios_data').doc(uid).set({
-            balance: appBalance,
+        const payload = {
+            uid: uid,
+            nombre: currentUser?.name || '',
+            balance: Number(appBalance) || 0,
             history: appHistory,
             banks: appBanks,
-            actualizado: new Date()
+            actualizado: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        await db.collection('usuarios_data').doc(uid).set(payload, { merge: true });
+        console.log(`☁️ Datos guardados en Firebase → usuarios_data/${uid}`, {
+            saldo: payload.balance,
+            movimientos: payload.history.length,
+            bancos: payload.banks.length
         });
-        console.log("☁️ Datos de usuario sincronizados en Firebase");
     } catch (e) {
-        console.log("⚠️ No se pudo sincronizar datos:", e.message);
+        console.error("❌ Error guardando datos en Firebase:", e.message, e);
     }
 }
 
 // Cargar datos financieros del usuario desde Firebase
 async function cargarUsuarioDesdeFirebase(uid) {
-    if (!db || !uid) return false;
+    if (!db) { console.warn("⚠️ cargarUsuarioDesdeFirebase: db es null"); return false; }
+    if (!uid) { console.warn("⚠️ cargarUsuarioDesdeFirebase: uid vacío"); return false; }
     try {
         const doc = await db.collection('usuarios_data').doc(uid).get();
         if (doc.exists) {
             const data = doc.data();
-            appBalance = data.balance ?? 0;
-            appHistory = data.history ?? [];
-            appBanks = data.banks ?? [];
+            appBalance = Number(data.balance) || 0;
+            appHistory = Array.isArray(data.history) ? data.history : [];
+            appBanks = Array.isArray(data.banks) ? data.banks : [];
+            console.log(`☁️ Datos cargados desde Firebase → usuarios_data/${uid}`, {
+                saldo: appBalance,
+                movimientos: appHistory.length,
+                bancos: appBanks.length
+            });
             return true;
         }
+        console.log(`☁️ No hay datos en Firebase para uid ${uid} todavía`);
     } catch (e) {
-        console.log("⚠️ No se pudo cargar datos:", e.message);
+        console.error("❌ Error cargando datos desde Firebase:", e.message, e);
     }
     return false;
 }
@@ -419,14 +436,13 @@ function loadUserData(uid) {
         if (!Array.isArray(appBanks)) appBanks = [];
     } catch { appBanks = []; }
 
-    // 2️⃣ Sincronizar en segundo plano con Firebase
+    // 2️⃣ Traer los datos más recientes desde Firebase
     cargarUsuarioDesdeFirebase(uid).then((ok) => {
         if (ok && currentUser && currentUser.id === uid) {
-            // Refrescar UI con los datos más recientes de la nube
             updateBalanceDisplay();
             renderHistory();
             renderBankTab();
-            console.log("☁️ Datos financieros actualizados desde Firebase");
+            console.log("☁️ Datos financieros sincronizados desde Firebase al iniciar sesión");
         }
     });
 }
@@ -565,8 +581,16 @@ function createUser(name, cedula, phone, password) {
     localStorage.setItem(STORAGE_KEYS.BANKS + newUser.id, '[]');
     setUserTheme(newUser.id, 'light');
     setUserColor(newUser.id, COLOR_PALETTE[0]);
-    // Crear documento financiero en Firebase para el nuevo usuario
+
+    // 🔥 Crear el documento financiero vacío en Firebase
+    appBalance = 0;
+    appHistory = [];
+    appBanks = [];
+    const tempUser = currentUser;
+    currentUser = newUser;
     guardarUsuarioEnFirebase(newUser.id);
+    currentUser = tempUser;
+
     return newUser;
 }
 function loginUser(uid, password) {
@@ -580,7 +604,7 @@ function doLogin(uid, password) {
     if (!result.ok) { showLoginMessage('❌ ' + result.msg, true); return; }
     currentUser = result.user;
     setActiveUid(currentUser.id);
-    loadUserData(currentUser.id);
+    loadUserData(currentUser.id);   // 👈 aquí se dispara cargarUsuarioDesdeFirebase
     showMainScreen();
 }
 function logout() {
@@ -816,6 +840,7 @@ function saveBankAccount() {
     }
 
     saveUserData();
+    guardarUsuarioEnFirebase(currentUser.id);   // 🔥 Sincroniza con Firebase
     closeBankModal();
     renderBankTab();
 }
@@ -825,6 +850,7 @@ function deleteBankAccount(id) {
     if (!confirm(`¿Eliminar la cuenta de "${acc.bank}" con ${formatRD(acc.amount)}?`)) return;
     appBanks = appBanks.filter(a => a.id !== id);
     saveUserData();
+    guardarUsuarioEnFirebase(currentUser.id);   // 🔥 Sincroniza con Firebase
     renderBankTab();
     showMsg(bankMessage, `✅ Cuenta de ${acc.bank} eliminada.`, false, 3000);
 }
@@ -1097,6 +1123,8 @@ function registerIncome() {
     appBalance += amount;
     appHistory.push(newMovement);
     saveUserData();
+    guardarUsuarioEnFirebase(currentUser.id);   // 🔥 Sincroniza con Firebase
+
     incomeAmount.value = '';
     incomeNoteSelect.value = '';
     incomeNoteCustom.value = '';
@@ -1165,6 +1193,7 @@ function registerWithdraw() {
     }
 
     saveUserData();
+    guardarUsuarioEnFirebase(currentUser.id);   // 🔥 Sincroniza con Firebase
 
     withdrawAmount.value = '';
     withdrawNoteSelect.value = '';
@@ -1227,6 +1256,7 @@ function saveEditedMovement() {
     if (item.type === 'income') appBalance += amount;
     else appBalance -= amount;
     saveUserData();
+    guardarUsuarioEnFirebase(currentUser.id);   // 🔥 Sincroniza con Firebase
     updateBalanceDisplay();
     renderHistory();
     closeMovementModal();
@@ -1240,6 +1270,7 @@ function deleteMovement(id) {
     else appBalance += item.amount;
     appHistory = appHistory.filter(m => m.id !== id);
     saveUserData();
+    guardarUsuarioEnFirebase(currentUser.id);   // 🔥 Sincroniza con Firebase
     updateBalanceDisplay();
     renderHistory();
     showOperationMessage('Movimiento eliminado.', false);
@@ -1256,6 +1287,7 @@ function clearHistory() {
     if (!confirm('⚠️ ¿Borrar TODO el historial? El saldo actual se mantendrá. Esta acción no se puede deshacer.')) return;
     appHistory = [];
     saveUserData();
+    guardarUsuarioEnFirebase(currentUser.id);   // 🔥 Sincroniza con Firebase
     renderHistory();
     updateBalanceDisplay();
     showOperationMessage('Historial eliminado correctamente.', false);
@@ -1288,6 +1320,7 @@ function confirmResetAll() {
     appBalance = 0;
     appHistory = [];
     saveUserData();
+    guardarUsuarioEnFirebase(currentUser.id);   // 🔥 Sincroniza con Firebase
     updateBalanceDisplay();
     renderHistory();
     closeResetConfirmModal();
@@ -1583,9 +1616,8 @@ async function init() {
             const cargado = await cargarUsuariosDesdeFirebase();
             if (cargado) {
                 localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-                console.log("☁️ Usuarios cargados desde Firebase");
+                console.log("☁️ Usuarios cargados desde Firebase al iniciar");
             } else if (users.length > 0) {
-                // Si no hay nada en Firebase pero sí localmente, subir
                 await guardarUsuariosEnFirebase();
                 console.log("☁️ Usuarios locales subidos a Firebase");
             }
