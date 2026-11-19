@@ -50,21 +50,27 @@
         </div>
     </div>
 
-    <!-- PANTALLA 2: SELECCIÓN DE USUARIO -->
+    <!-- PANTALLA 2: BÚSQUEDA INTELIGENTE DE USUARIO -->
     <div id="selectUserScreen" class="access-screen hidden">
         <div class="logo-icon">🔐</div>
-        <h1>Selecciona tu usuario</h1>
-        <p class="subtitle">Elige un usuario y ingresa tu contraseña</p>
+        <h1>Inicia sesión</h1>
+        <p class="subtitle">Escribe tu nombre, cédula o teléfono</p>
         <div id="selectUserMessage" class="hidden"></div>
         <div class="form-box">
-            <label>Usuario</label>
-            <select id="userSelectDropdown"></select>
-            <label>Contraseña</label>
+            <label>🔍 Buscar usuario</label>
+            <input type="text" id="userSearchInput" placeholder="Ej. JUAN, 001-1234567-8, 809-555-1234" autocomplete="off" maxlength="60">
+            <div id="searchTypeIndicator" class="search-type-indicator search-type-otro">🔍 Escribe nombre, cédula o teléfono</div>
+            <div id="searchResultsList" class="search-results"></div>
+            
+            <label id="selectedUserLabel" class="hidden">✅ Usuario seleccionado</label>
+            <div id="selectedUserInfo" class="selected-user-info hidden"></div>
+            
+            <label id="passwordLabel">🔑 Contraseña</label>
             <div class="password-wrapper">
-                <input type="password" id="userLoginPassword" placeholder="••••••••">
+                <input type="password" id="userLoginPassword" placeholder="••••••••" autocomplete="off">
                 <button type="button" class="eye-btn" data-eye="userLoginPassword" title="Mostrar/ocultar">👁️</button>
             </div>
-            <button class="btn btn-primary" id="userLoginBtn" style="margin-top:8px;">Ingresar</button>
+            <button class="btn btn-primary" id="userLoginBtn" style="margin-top:8px;" disabled>Ingresar</button>
         </div>
         <div class="divider">o</div>
         <button class="btn btn-outline" id="goToCreateUserBtn">➕ Crear nuevo usuario</button>
@@ -119,6 +125,7 @@
                 <span>👤 <b id="currentUserName">—</b></span>
                 <span>🆔 <span id="currentUserCedula">—</span></span>
                 <span>📞 <span id="currentUserPhone">—</span></span>
+                <span id="adminBadge" class="admin-badge hidden">👑 ADMIN</span>
             </div>
             <div class="tabs">
                 <button class="tab-btn active" data-tab="inicio">🏠 Inicio</button>
@@ -172,7 +179,6 @@
                 <div class="note-selector">
                     <select id="withdrawNoteSelect"></select>
                     <input type="text" id="withdrawNoteCustom" placeholder="Escribe el detalle (opcional)" maxlength="80" class="hidden">
-                    <!-- Selector de banco destino (solo si categoría = Banco) -->
                     <div class="bank-destination-wrapper hidden" id="bankDestinationWrapper">
                         <label for="withdrawBankSelect">🏦 ¿A qué banco llevas el dinero?</label>
                         <select id="withdrawBankSelect"></select>
@@ -243,7 +249,7 @@
         <!-- PESTAÑA USUARIOS -->
         <div class="tab-content" id="tab-usuarios">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
-                <h2 style="font-size:1.2rem;">👥 Usuarios</h2>
+                <h2 style="font-size:1.2rem;">👥 <span id="usersTabTitle">Mi cuenta</span></h2>
                 <button class="btn btn-primary btn-sm" id="addUserFromTabBtn">➕ Nuevo usuario</button>
             </div>
             <div id="usersListContainer"></div>
@@ -264,24 +270,6 @@
         <div class="modal-actions">
             <button class="btn btn-outline" id="cancelBankBtn">Cancelar</button>
             <button class="btn btn-primary" id="saveBankBtn">Guardar</button>
-        </div>
-    </div>
-</div>
-
-<!-- MODAL CAMBIAR DE USUARIO -->
-<div class="modal-overlay" id="switchUserModal">
-    <div class="modal-content">
-        <div class="modal-title">🔐 Cambiar de usuario</div>
-        <p id="switchUserSubtitle" style="font-size:.9rem; color:var(--text-muted); margin-bottom:14px;"></p>
-        <div id="switchUserMessage" class="hidden"></div>
-        <label>Contraseña</label>
-        <div class="password-wrapper">
-            <input type="password" id="switchUserPassword" placeholder="••••••••" autocomplete="off">
-            <button type="button" class="eye-btn" data-eye="switchUserPassword" title="Mostrar/ocultar">👁️</button>
-        </div>
-        <div class="modal-actions">
-            <button class="btn btn-outline" id="cancelSwitchUserBtn">Cancelar</button>
-            <button class="btn btn-primary" id="confirmSwitchUserBtn">Entrar</button>
         </div>
     </div>
 </div>
@@ -387,6 +375,13 @@
                     <div class="desc">Actualiza la contraseña del usuario actual</div>
                 </span>
             </button>
+            <button class="settings-item" id="openMasterPasswordBtn">
+                <span class="icon">👑</span>
+                <span class="info">
+                    <div class="title">Contraseña de administrador</div>
+                    <div class="desc">Cambia la contraseña maestra (solo admin)</div>
+                </span>
+            </button>
             <button class="settings-item" id="openColorsBtn">
                 <span class="icon">🎨</span>
                 <span class="info">
@@ -420,7 +415,7 @@
                 <span class="icon">🚪</span>
                 <span class="info">
                     <div class="title" style="color:var(--danger);">Cerrar sesión</div>
-                    <div class="desc">Volver a la selección de usuario</div>
+                    <div class="desc">Volver a la pantalla de inicio de sesión</div>
                 </span>
             </button>
         </div>
@@ -457,6 +452,36 @@
     </div>
 </div>
 
+<!-- MODAL CAMBIAR CONTRASEÑA MAESTRA -->
+<div class="modal-overlay" id="masterPasswordModal">
+    <div class="modal-content">
+        <div class="modal-title">👑 Cambiar contraseña de administrador</div>
+        <p style="font-size:.85rem; color:var(--text-muted); margin-bottom:14px;">
+            Esta contraseña maestra permite entrar a <b>cualquier usuario</b> sin conocer su contraseña personal.
+        </p>
+        <div id="masterPasswordChangeMessage" class="hidden"></div>
+        <label>Contraseña maestra actual</label>
+        <div class="password-wrapper">
+            <input type="password" id="currentMasterPassword" placeholder="••••••••">
+            <button type="button" class="eye-btn" data-eye="currentMasterPassword" title="Mostrar/ocultar">👁️</button>
+        </div>
+        <label>Nueva contraseña maestra (mín. 4 caracteres)</label>
+        <div class="password-wrapper">
+            <input type="password" id="newMasterPassword" placeholder="••••••••">
+            <button type="button" class="eye-btn" data-eye="newMasterPassword" title="Mostrar/ocultar">👁️</button>
+        </div>
+        <label>Confirmar nueva contraseña maestra</label>
+        <div class="password-wrapper">
+            <input type="password" id="confirmNewMasterPassword" placeholder="••••••••">
+            <button type="button" class="eye-btn" data-eye="confirmNewMasterPassword" title="Mostrar/ocultar">👁️</button>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-outline" id="cancelMasterPasswordBtn">Cancelar</button>
+            <button class="btn btn-primary" id="saveMasterPasswordBtn">Guardar</button>
+        </div>
+    </div>
+</div>
+
 <!-- MODAL COLORES -->
 <div class="modal-overlay" id="colorsModal">
     <div class="modal-content">
@@ -480,6 +505,10 @@
     <div class="modal-content">
         <div class="modal-title">❓ Ayuda</div>
         <ul class="help-list">
+            <li><b>🔍 Búsqueda inteligente:</b> para iniciar sesión, escribe tu nombre, cédula o teléfono. El sistema detecta automáticamente el tipo de búsqueda y te reconoce aunque escribas sin guiones.</li>
+            <li><b>🔒 Un usuario a la vez:</b> desde dentro de la app solo puedes ver tus datos. Para que otro usuario entre, debes cerrar sesión.</li>
+            <li><b>👑 Contraseña maestra:</b> la contraseña de administrador (por defecto <code>/*/*0207/*/*</code>) permite entrar a CUALQUIER usuario sin conocer su contraseña personal.</li>
+            <li><b>⚙️ Cambiar contraseña maestra:</b> desde Configuración puedes cambiar la contraseña de administrador.</li>
             <li><b>👥 Multiusuario:</b> cada usuario tiene su propio saldo, historial, contraseña, colores y cuentas bancarias.</li>
             <li><b>🏦 Banco:</b> registra el monto que tienes en cada banco. El total y el banco principal aparecen en la esquina superior derecha.</li>
             <li><b>💸 Retiro a banco:</b> si eliges la categoría "🏦 Banco" al retirar, se te pedirá a qué banco llevarás el dinero. El monto se sumará automáticamente a esa cuenta bancaria.</li>
@@ -488,8 +517,6 @@
             <li><b>🚫 Retiros:</b> no se permite retirar más de lo que tienes en el saldo.</li>
             <li><b>📋 Historial:</b> totales, y en cada retiro el saldo que queda después de ese retiro.</li>
             <li><b>🔐 Seguridad:</b> las contraseñas se guardan encriptadas con bcrypt, nunca en texto plano.</li>
-            <li><b>🗑️ Eliminar usuario:</b> pide tu contraseña para confirmar.</li>
-            <li><b>🔄 Resetear todo a cero:</b> pide contraseña y pone saldo + historial en cero (mantiene banco y colores).</li>
             <li><b>💾 Respaldo:</b> exporta tus datos a un archivo JSON y restaura cuando quieras.</li>
             <li><b>📊 Exportar a Excel:</b> descarga tu historial en formato CSV compatible con Excel.</li>
             <li><b>📱 PWA:</b> puedes instalar esta app en tu celular desde el menú del navegador.</li>
@@ -500,14 +527,14 @@
     </div>
 </div>
 
-<!-- 🔥 SDKs de Firebase (deben cargarse antes de app.js) -->
+<!-- 🔥 SDKs de Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 
 <!-- Tu aplicación -->
 <script src="app.js"></script>
 
-<!-- 📱 Service Worker para PWA (instalable y offline) -->
+<!-- 📱 Service Worker para PWA -->
 <script>
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

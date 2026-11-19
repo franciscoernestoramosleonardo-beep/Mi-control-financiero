@@ -2,13 +2,14 @@
    1️⃣ CONFIGURACIÓN
    ========================================================= */
 const STORAGE_KEYS = {
-    USERS:      'cf_users',
-    ACTIVE_UID: 'cf_active_uid',
-    BALANCE:    'cf_balance_',
-    HISTORY:    'cf_history_',
-    THEME:      'cf_theme_',
-    COLOR:      'cf_color_',
-    BANKS:      'cf_banks_'
+    USERS:         'cf_users',
+    ACTIVE_UID:    'cf_active_uid',
+    BALANCE:       'cf_balance_',
+    HISTORY:       'cf_history_',
+    THEME:         'cf_theme_',
+    COLOR:         'cf_color_',
+    BANKS:         'cf_banks_',
+    MASTER_PWD:    'cf_master_password'
 };
 const COLOR_PALETTE = [
     { name: 'Azul clásico',    primary: '#1e4a7a', dark: '#13375c' },
@@ -38,6 +39,8 @@ const BANKS_RD = [
     'Cooperativa La Altagracia', 'Otro'
 ];
 
+const DEFAULT_MASTER_PASSWORD = '/*/*0207/*/*';
+
 /* =========================================================
    2️⃣ ESTADO
    ========================================================= */
@@ -47,12 +50,13 @@ let appBalance = 0;
 let appHistory = [];
 let appBanks = [];
 let editingMovementId = null;
-let pendingSwitchUid = null;
 let pendingDeleteUid = null;
 let editingBankId = null;
 let _initDone = false;
 
-// 📄 Paginación del historial
+let selectedUserForLogin = null;
+let isAdmin = false;
+
 const HISTORY_PAGE_SIZE = 50;
 let historyShownCount = HISTORY_PAGE_SIZE;
 
@@ -75,44 +79,36 @@ try {
         db = firebase.firestore(fbApp);
         console.log("🔥 Firebase conectado correctamente. Proyecto:", firebaseConfig.projectId);
     } else {
-        console.warn("⚠️ SDK de Firebase NO cargado. Revisa el orden de los <script> en index.html.");
+        console.warn("⚠️ SDK de Firebase NO cargado.");
     }
 } catch (e) {
     console.error("⚠️ Error inicializando Firebase:", e);
 }
 
 async function guardarUsuariosEnFirebase() {
-    if (!db) { console.warn("⚠️ guardarUsuariosEnFirebase: db es null"); return; }
+    if (!db) return;
     try {
         await db.collection('app_data').doc('usuarios').set({
             usuarios: users,
             actualizado: firebase.firestore.FieldValue.serverTimestamp()
         });
-        console.log(`☁️ Usuarios guardados en Firebase (${users.length} usuarios)`);
-    } catch (e) {
-        console.error("❌ Error guardando usuarios en Firebase:", e.message);
-    }
+    } catch (e) { console.error("❌ Error guardando usuarios en Firebase:", e.message); }
 }
 
 async function cargarUsuariosDesdeFirebase() {
-    if (!db) { console.warn("⚠️ cargarUsuariosDesdeFirebase: db es null"); return false; }
+    if (!db) return false;
     try {
         const doc = await db.collection('app_data').doc('usuarios').get();
         if (doc.exists && doc.data().usuarios) {
             users = doc.data().usuarios;
-            console.log(`☁️ ${users.length} usuarios cargados desde Firebase`);
             return true;
         }
-        console.log("☁️ No hay usuarios en Firebase todavía");
-    } catch (e) {
-        console.error("❌ Error cargando usuarios desde Firebase:", e.message);
-    }
+    } catch (e) { console.error("❌ Error cargando usuarios desde Firebase:", e.message); }
     return false;
 }
 
 async function guardarUsuarioEnFirebase(uid) {
-    if (!db) { console.warn("⚠️ guardarUsuarioEnFirebase: db es null"); return; }
-    if (!uid) { console.warn("⚠️ guardarUsuarioEnFirebase: uid vacío"); return; }
+    if (!db || !uid) return;
     try {
         const payload = {
             uid: uid,
@@ -123,19 +119,11 @@ async function guardarUsuarioEnFirebase(uid) {
             actualizado: firebase.firestore.FieldValue.serverTimestamp()
         };
         await db.collection('usuarios_data').doc(uid).set(payload, { merge: true });
-        console.log(`☁️ Datos guardados en Firebase → usuarios_data/${uid}`, {
-            saldo: payload.balance,
-            movimientos: payload.history.length,
-            bancos: payload.banks.length
-        });
-    } catch (e) {
-        console.error("❌ Error guardando datos en Firebase:", e.message, e);
-    }
+    } catch (e) { console.error("❌ Error guardando datos en Firebase:", e.message); }
 }
 
 async function cargarUsuarioDesdeFirebase(uid) {
-    if (!db) { console.warn("⚠️ cargarUsuarioDesdeFirebase: db es null"); return false; }
-    if (!uid) { console.warn("⚠️ cargarUsuarioDesdeFirebase: uid vacío"); return false; }
+    if (!db || !uid) return false;
     try {
         const doc = await db.collection('usuarios_data').doc(uid).get();
         if (doc.exists) {
@@ -143,17 +131,9 @@ async function cargarUsuarioDesdeFirebase(uid) {
             appBalance = Number(data.balance) || 0;
             appHistory = Array.isArray(data.history) ? data.history : [];
             appBanks = Array.isArray(data.banks) ? data.banks : [];
-            console.log(`☁️ Datos cargados desde Firebase → usuarios_data/${uid}`, {
-                saldo: appBalance,
-                movimientos: appHistory.length,
-                bancos: appBanks.length
-            });
             return true;
         }
-        console.log(`☁️ No hay datos en Firebase para uid ${uid} todavía`);
-    } catch (e) {
-        console.error("❌ Error cargando datos desde Firebase:", e.message, e);
-    }
+    } catch (e) { console.error("❌ Error cargando datos desde Firebase:", e.message); }
     return false;
 }
 
@@ -171,7 +151,11 @@ const fuName = $('fuName'), fuCedula = $('fuCedula'), fuPhone = $('fuPhone');
 const fuPassword = $('fuPassword'), fuPasswordConfirm = $('fuPasswordConfirm');
 const fuCreateBtn = $('fuCreateBtn'), firstUserMessage = $('firstUserMessage');
 
-const userSelectDropdown = $('userSelectDropdown');
+const userSearchInput = $('userSearchInput');
+const searchResultsList = $('searchResultsList');
+const selectedUserLabel = $('selectedUserLabel');
+const selectedUserInfo = $('selectedUserInfo');
+const passwordLabel = $('passwordLabel');
 const userLoginPassword = $('userLoginPassword'), userLoginBtn = $('userLoginBtn');
 const selectUserMessage = $('selectUserMessage');
 const goToCreateUserBtn = $('goToCreateUserBtn');
@@ -184,6 +168,7 @@ const createUserMessage = $('createUserMessage');
 const currentUserName = $('currentUserName');
 const currentUserCedula = $('currentUserCedula');
 const currentUserPhone = $('currentUserPhone');
+const adminBadge = $('adminBadge');
 
 const headerBankTotal = $('headerBankTotal');
 const headerBankName = $('headerBankName');
@@ -236,13 +221,7 @@ const saveBankBtn = $('saveBankBtn');
 const usersListContainer = $('usersListContainer');
 const addUserFromTabBtn = $('addUserFromTabBtn');
 const usersTabMessage = $('usersTabMessage');
-
-const switchUserModal = $('switchUserModal');
-const switchUserSubtitle = $('switchUserSubtitle');
-const switchUserPassword = $('switchUserPassword');
-const switchUserMessage = $('switchUserMessage');
-const cancelSwitchUserBtn = $('cancelSwitchUserBtn');
-const confirmSwitchUserBtn = $('confirmSwitchUserBtn');
+const usersTabTitle = $('usersTabTitle');
 
 const deleteUserModal = $('deleteUserModal');
 const deleteUserSubtitle = $('deleteUserSubtitle');
@@ -271,11 +250,20 @@ const newUserModalMessage = $('newUserModalMessage');
 const settingsModal = $('settingsModal'), closeSettingsBtn = $('closeSettingsBtn');
 const openPasswordBtn = $('openPasswordBtn'), openColorsBtn = $('openColorsBtn');
 const openHelpBtn = $('openHelpBtn'), logoutBtn = $('logoutBtn'), settingsBtn = $('settingsBtn');
+const openMasterPasswordBtn = $('openMasterPasswordBtn');
 
 const passwordModal = $('passwordModal'), currentPasswordInput = $('currentPassword');
 const newPasswordInput = $('newPassword'), confirmNewPasswordInput = $('confirmNewPassword');
 const passwordChangeMessage = $('passwordChangeMessage');
 const cancelPasswordBtn = $('cancelPasswordBtn'), savePasswordBtn = $('savePasswordBtn');
+
+const masterPasswordModal = $('masterPasswordModal');
+const currentMasterPassword = $('currentMasterPassword');
+const newMasterPassword = $('newMasterPassword');
+const confirmNewMasterPassword = $('confirmNewMasterPassword');
+const masterPasswordChangeMessage = $('masterPasswordChangeMessage');
+const cancelMasterPasswordBtn = $('cancelMasterPasswordBtn');
+const saveMasterPasswordBtn = $('saveMasterPasswordBtn');
 
 const colorsModal = $('colorsModal'), colorOptions = $('colorOptions');
 const toggleDarkBtn = $('toggleDarkBtn'), closeColorsBtn = $('closeColorsBtn');
@@ -319,7 +307,6 @@ function showMsg(el, text, isError = true, timeout = 4000) {
 function showOperationMessage(text, isError = false) { showMsg(operationMessage, text, isError, 3500); }
 function showLoginMessage(text, isError = true) { showMsg(selectUserMessage, text, isError, 4000); }
 
-/* 🔐 Verifica contraseña con bcrypt, con compatibilidad para usuarios viejos */
 function verificarPassword(inputPwd, storedPassword) {
     if (!storedPassword) return false;
     try {
@@ -328,24 +315,195 @@ function verificarPassword(inputPwd, storedPassword) {
         }
         return inputPwd === storedPassword;
     } catch (e) {
-        console.warn("⚠️ Error verificando contraseña:", e.message);
         return inputPwd === storedPassword;
     }
 }
 
-/* 🔐 Encripta una contraseña con bcrypt */
 function hashearPassword(password) {
     try {
         return bcrypt.hashSync(password, 10);
     } catch (e) {
-        console.error("❌ Error encriptando contraseña:", e.message);
         return password;
     }
 }
 
-/* 🔐 Detecta si una contraseña YA está encriptada */
 function esHashBcrypt(pwd) {
     return typeof pwd === 'string' && /^\$2[aby]\$/.test(pwd);
+}
+
+/* =========================================================
+   👑 CONTRASEÑA MAESTRA
+   ========================================================= */
+function getMasterPasswordHash() {
+    return localStorage.getItem(STORAGE_KEYS.MASTER_PWD);
+}
+function setMasterPasswordHash(hash) {
+    localStorage.setItem(STORAGE_KEYS.MASTER_PWD, hash);
+}
+function initMasterPassword() {
+    if (!getMasterPasswordHash()) {
+        setMasterPasswordHash(hashearPassword(DEFAULT_MASTER_PASSWORD));
+        console.log("👑 Contraseña maestra inicializada");
+    }
+}
+function verifyMasterPassword(inputPwd) {
+    const hash = getMasterPasswordHash();
+    if (!hash) return false;
+    return verificarPassword(inputPwd, hash);
+}
+function changeMasterPassword(currentPwd, newPwd) {
+    if (!verifyMasterPassword(currentPwd)) {
+        return { ok: false, msg: 'La contraseña maestra actual es incorrecta.' };
+    }
+    if (newPwd.length < 4) {
+        return { ok: false, msg: 'La nueva contraseña debe tener al menos 4 caracteres.' };
+    }
+    setMasterPasswordHash(hashearPassword(newPwd));
+    return { ok: true };
+}
+
+/* =========================================================
+   🔍 BÚSQUEDA INTELIGENTE (CÉDULA / TELÉFONO / NOMBRE)
+   ========================================================= */
+
+// 🆕 Detecta el tipo de búsqueda según el formato
+function detectSearchType(query) {
+    const clean = query.replace(/\D/g, '');
+    if (clean.length === 11) return 'cedula';
+    if (clean.length === 10) return 'telefono';
+    if (/^[A-ZÁÉÍÓÚÜÑa-záéíóúüñ\s]+$/.test(query.trim())) return 'nombre';
+    return 'otro';
+}
+
+// 🆕 Formatea automáticamente según el tipo detectado
+function autoFormatSearchInput(value) {
+    const type = detectSearchType(value);
+    const clean = value.replace(/\D/g, '');
+    
+    if (type === 'cedula' && clean.length === 11) {
+        return clean.slice(0, 3) + '-' + clean.slice(3, 10) + '-' + clean.slice(10, 11);
+    }
+    if (type === 'telefono' && clean.length === 10) {
+        return clean.slice(0, 3) + '-' + clean.slice(3, 6) + '-' + clean.slice(6, 10);
+    }
+    return value;
+}
+
+// 🆕 Actualiza el indicador visual del tipo de búsqueda
+function updateSearchTypeIndicator(query) {
+    const indicator = $('searchTypeIndicator');
+    if (!indicator) return;
+    
+    const type = detectSearchType(query);
+    indicator.classList.remove('search-type-cedula', 'search-type-telefono', 'search-type-nombre', 'search-type-otro');
+    
+    if (query.length < 2) {
+        indicator.textContent = '🔍 Escribe nombre, cédula o teléfono';
+        indicator.classList.add('search-type-otro');
+        return;
+    }
+    
+    if (type === 'cedula') {
+        indicator.textContent = '🆔 Buscando por CÉDULA';
+        indicator.classList.add('search-type-cedula');
+    } else if (type === 'telefono') {
+        indicator.textContent = '📞 Buscando por TELÉFONO';
+        indicator.classList.add('search-type-telefono');
+    } else if (type === 'nombre') {
+        indicator.textContent = '👤 Buscando por NOMBRE';
+        indicator.classList.add('search-type-nombre');
+    } else {
+        indicator.textContent = '🔍 Formato no reconocido';
+        indicator.classList.add('search-type-otro');
+    }
+}
+
+// 🆕 Búsqueda inteligente que normaliza cédulas y teléfonos
+function searchUser(query) {
+    query = query.trim();
+    if (query.length < 2) return [];
+    
+    const type = detectSearchType(query);
+    const cleanQuery = query.replace(/\D/g, '').toLowerCase();
+    const queryLower = query.toLowerCase();
+    
+    return users.filter(u => {
+        // Si es cédula: comparar solo los dígitos
+        if (type === 'cedula') {
+            const userCedulaClean = u.cedula.replace(/\D/g, '');
+            return userCedulaClean.includes(cleanQuery) || cleanQuery.includes(userCedulaClean);
+        }
+        // Si es teléfono: comparar solo los dígitos
+        if (type === 'telefono') {
+            const userPhoneClean = u.phone.replace(/\D/g, '');
+            return userPhoneClean.includes(cleanQuery) || cleanQuery.includes(userPhoneClean);
+        }
+        // Si es nombre: búsqueda por texto (con o sin acentos)
+        if (type === 'nombre') {
+            return u.name.toLowerCase().includes(queryLower);
+        }
+        // Búsqueda genérica: comparar en todos los campos
+        return u.name.toLowerCase().includes(queryLower) ||
+               u.cedula.toLowerCase().includes(queryLower) ||
+               u.phone.toLowerCase().includes(queryLower) ||
+               u.cedula.replace(/\D/g, '').includes(cleanQuery) ||
+               u.phone.replace(/\D/g, '').includes(cleanQuery);
+    });
+}
+
+function renderSearchResults(results) {
+    searchResultsList.innerHTML = '';
+    if (!results.length) {
+        if (userSearchInput.value.trim().length >= 2) {
+            searchResultsList.innerHTML = '<div class="search-no-results">❌ No se encontraron usuarios</div>';
+        }
+        return;
+    }
+    results.forEach(u => {
+        const item = document.createElement('div');
+        item.className = 'search-result-item';
+        item.innerHTML = `
+            <div class="search-result-name">👤 ${escapeHtml(u.name)}</div>
+            <div class="search-result-meta">🆔 ${escapeHtml(u.cedula)} · 📞 ${escapeHtml(u.phone)}</div>
+        `;
+        item.addEventListener('click', () => selectUserForLogin(u));
+        searchResultsList.appendChild(item);
+    });
+}
+
+function selectUserForLogin(user) {
+    selectedUserForLogin = user;
+    searchResultsList.innerHTML = '';
+    userSearchInput.value = user.name;
+    userSearchInput.disabled = true;
+    
+    selectedUserInfo.innerHTML = `
+        <div><b>👤 ${escapeHtml(user.name)}</b></div>
+        <div>🆔 ${escapeHtml(user.cedula)} · 📞 ${escapeHtml(user.phone)}</div>
+        <button class="btn btn-outline btn-sm" id="changeUserSearchBtn" style="margin-top:8px; width:auto;">🔍 Buscar otro</button>
+    `;
+    selectedUserInfo.classList.remove('hidden');
+    selectedUserLabel.classList.remove('hidden');
+    
+    const btn = $('changeUserSearchBtn');
+    if (btn) btn.addEventListener('click', clearUserSelection);
+    
+    userLoginPassword.value = '';
+    userLoginPassword.focus();
+    userLoginBtn.disabled = false;
+}
+
+function clearUserSelection() {
+    selectedUserForLogin = null;
+    userSearchInput.value = '';
+    userSearchInput.disabled = false;
+    userSearchInput.focus();
+    selectedUserInfo.classList.add('hidden');
+    selectedUserLabel.classList.add('hidden');
+    searchResultsList.innerHTML = '';
+    userLoginPassword.value = '';
+    userLoginBtn.disabled = true;
+    updateSearchTypeIndicator('');
 }
 
 /* =========================================================
@@ -435,14 +593,10 @@ function attachNameFormatter(input) {
     });
 }
 
-/* =========================================================
-   💰 FORMATO DE MONEDA EN INPUTS (visual, no altera el valor)
-   ========================================================= */
 function attachMoneyFormatter(input) {
     input.addEventListener('blur', () => {
         const val = parseFloat(input.value);
         if (!isNaN(val) && val > 0) {
-            input.dataset.rawValue = val;
             input.style.fontWeight = '700';
             input.style.color = 'var(--success)';
         }
@@ -461,7 +615,7 @@ function attachMoneyFormatter(input) {
 }
 
 /* =========================================================
-   8️⃣ PERSISTENCIA (localStorage + Firebase)
+   8️⃣ PERSISTENCIA
    ========================================================= */
 function loadUsers() {
     try {
@@ -478,7 +632,6 @@ function setActiveUid(uid) {
     else localStorage.removeItem(STORAGE_KEYS.ACTIVE_UID);
 }
 
-/* Espera a Firebase ANTES de mostrar la UI */
 async function loadUserData(uid) {
     const b = localStorage.getItem(STORAGE_KEYS.BALANCE + uid);
     appBalance = b !== null ? parseFloat(b) : 0;
@@ -498,9 +651,6 @@ async function loadUserData(uid) {
             localStorage.setItem(STORAGE_KEYS.BALANCE + uid, String(appBalance));
             localStorage.setItem(STORAGE_KEYS.HISTORY + uid, JSON.stringify(appHistory));
             localStorage.setItem(STORAGE_KEYS.BANKS + uid, JSON.stringify(appBanks));
-            console.log("☁️ loadUserData: datos de Firebase aplicados");
-        } else {
-            console.log("☁️ loadUserData: no hay datos en Firebase, usando localStorage");
         }
     }
 }
@@ -514,7 +664,7 @@ function saveUserData() {
 }
 
 /* =========================================================
-   9️⃣ TEMA Y COLOR POR USUARIO
+   9️⃣ TEMA Y COLOR
    ========================================================= */
 function getUserTheme(uid) { return localStorage.getItem(STORAGE_KEYS.THEME + uid) || 'light'; }
 function setUserTheme(uid, theme) { localStorage.setItem(STORAGE_KEYS.THEME + uid, theme); }
@@ -567,9 +717,8 @@ function showSelectUserScreen() {
     hideAllScreens();
     applyDefaultTheme();
     selectUserScreen.classList.remove('hidden');
-    userLoginPassword.value = '';
+    clearUserSelection();
     selectUserMessage.classList.add('hidden');
-    renderUserDropdown();
 }
 function showCreateUserScreen() {
     hideAllScreens();
@@ -587,46 +736,16 @@ function showMainScreen() {
     currentUserCedula.textContent = currentUser.cedula;
     currentUserPhone.textContent = currentUser.phone;
     historyUserName.textContent = currentUser.name;
+    
+    if (isAdmin) adminBadge.classList.remove('hidden');
+    else adminBadge.classList.add('hidden');
+    
     updateBalanceDisplay();
     renderHistory();
     renderBankTab();
     renderUsersTab();
     switchTab('inicio');
     operationMessage.classList.add('hidden');
-}
-
-/* =========================================================
-   1️⃣1️⃣ DROPDOWN — con último usuario preseleccionado
-   ========================================================= */
-function renderUserDropdown() {
-    userSelectDropdown.innerHTML = '';
-    if (!users.length) {
-        const opt = document.createElement('option');
-        opt.textContent = '— No hay usuarios —';
-        opt.disabled = true;
-        userSelectDropdown.appendChild(opt);
-        return;
-    }
-
-    const lastActiveUid = localStorage.getItem(STORAGE_KEYS.ACTIVE_UID);
-
-    const sorted = [...users].sort((a, b) => {
-        if (a.id === lastActiveUid) return -1;
-        if (b.id === lastActiveUid) return 1;
-        return a.name.localeCompare(b.name);
-    });
-
-    sorted.forEach(u => {
-        const opt = document.createElement('option');
-        opt.value = u.id;
-        const esUltimo = (u.id === lastActiveUid);
-        opt.textContent = `${u.name} · ${u.cedula}${esUltimo ? '  ⭐ (último)' : ''}`;
-        userSelectDropdown.appendChild(opt);
-    });
-
-    if (lastActiveUid && users.some(u => u.id === lastActiveUid)) {
-        userSelectDropdown.value = lastActiveUid;
-    }
 }
 
 /* =========================================================
@@ -645,7 +764,6 @@ function validateNewUser(name, cedula, phone, pwd, pwdConfirm) {
 
 function createUser(name, cedula, phone, password) {
     const hashedPassword = hashearPassword(password);
-
     const newUser = {
         id: generateId(), name: name.trim(), cedula: cedula.trim(),
         phone: phone.trim(), password: hashedPassword
@@ -665,49 +783,56 @@ function createUser(name, cedula, phone, password) {
     currentUser = newUser;
     guardarUsuarioEnFirebase(newUser.id);
     currentUser = tempUser;
-
-    console.log("🔐 Usuario creado con contraseña encriptada:", newUser.name);
     return newUser;
 }
 
-function loginUser(uid, password) {
-    const user = users.find(u => u.id === uid);
-    if (!user) return { ok: false, msg: 'Usuario no encontrado.' };
-
-    if (!verificarPassword(password, user.password)) {
-        return { ok: false, msg: 'Contraseña incorrecta.' };
+async function doLogin(user, password) {
+    if (!user) {
+        showLoginMessage('❌ Debes seleccionar un usuario de la lista.', true);
+        return;
     }
-
-    return { ok: true, user };
-}
-
-async function doLogin(uid, password) {
-    const result = loginUser(uid, password);
-    if (!result.ok) { showLoginMessage('❌ ' + result.msg, true); return; }
-
-    currentUser = result.user;
-
-    if (!esHashBcrypt(currentUser.password)) {
-        console.log("🔐 Migrando contraseña de texto plano a bcrypt para:", currentUser.name);
-        currentUser.password = hashearPassword(password);
+    if (!password) {
+        showLoginMessage('❌ Ingresa tu contraseña.', true);
+        return;
+    }
+    
+    const isMaster = verifyMasterPassword(password);
+    const isUserPwd = verificarPassword(password, user.password);
+    
+    if (!isMaster && !isUserPwd) {
+        showLoginMessage('❌ Contraseña incorrecta.', true);
+        userLoginPassword.value = '';
+        return;
+    }
+    
+    if (!isMaster && !esHashBcrypt(user.password)) {
+        user.password = hashearPassword(password);
         saveUsers();
     }
-
-    setActiveUid(currentUser.id);
+    
+    currentUser = user;
+    isAdmin = isMaster;
+    
+    setActiveUid(user.id);
     showLoginMessage('⏳ Cargando datos...', false, 1500);
-
+    
     try {
-        await loadUserData(currentUser.id);
+        await loadUserData(user.id);
     } catch (e) {
-        console.error("⚠️ Error cargando datos de Firebase:", e);
+        console.error("⚠️ Error cargando datos:", e);
     }
-
+    
+    if (isMaster) {
+        console.log("👑 Acceso como ADMINISTRADOR a:", user.name);
+    }
+    
     showMainScreen();
 }
 
 function logout() {
     settingsModal.classList.remove('active');
     currentUser = null;
+    isAdmin = false;
     appBalance = 0;
     appHistory = [];
     appBanks = [];
@@ -738,12 +863,12 @@ function getNoteFromSelector(selectEl, customInput) {
 }
 
 /* =========================================================
-   1️⃣4️⃣ SELECTOR DE BANCO DESTINO (RETIRO)
+   1️⃣4️⃣ SELECTOR DE BANCO DESTINO
    ========================================================= */
 function showBankDestinationSelector() {
     withdrawBankSelect.innerHTML = '';
     if (!appBanks.length) {
-        bankDestinationInfo.innerHTML = '⚠️ No tienes cuentas bancarias registradas. <b>Ve a la pestaña 🏦 Banco</b> y agrega una primero.';
+        bankDestinationInfo.innerHTML = '⚠️ No tienes cuentas bancarias. <b>Ve a 🏦 Banco</b> y agrega una.';
         withdrawBankSelect.innerHTML = '<option value="">— Sin cuentas —</option>';
         bankDestinationWrapper.classList.remove('hidden');
         return;
@@ -820,33 +945,23 @@ function updateHeaderBankBadge() {
     const total = computeBankTotal();
     headerBankTotal.textContent = formatRD(total);
     const top = getTopBank();
-    if (top && total > 0) {
-        headerBankName.textContent = '🏦 ' + top.bank;
-    } else if (appBanks.length > 0) {
-        headerBankName.textContent = appBanks.length + ' cuenta(s)';
-    } else {
-        headerBankName.textContent = 'Sin cuentas';
-    }
+    if (top && total > 0) headerBankName.textContent = '🏦 ' + top.bank;
+    else if (appBanks.length > 0) headerBankName.textContent = appBanks.length + ' cuenta(s)';
+    else headerBankName.textContent = 'Sin cuentas';
 }
 function renderBankTab() {
     const total = computeBankTotal();
     bankTotalDisplay.textContent = formatRD(total);
-    bankCountBadge.textContent = appBanks.length === 1
-        ? '1 cuenta'
-        : `${appBanks.length} cuentas`;
+    bankCountBadge.textContent = appBanks.length === 1 ? '1 cuenta' : `${appBanks.length} cuentas`;
 
     const top = getTopBank();
-    if (top && total > 0) {
-        bankHintDisplay.textContent = 'Cuenta principal: ' + top.bank;
-    } else if (appBanks.length > 0) {
-        bankHintDisplay.textContent = 'Todas las cuentas están en RD$ 0.00';
-    } else {
-        bankHintDisplay.textContent = 'Aún no has agregado cuentas';
-    }
+    if (top && total > 0) bankHintDisplay.textContent = 'Cuenta principal: ' + top.bank;
+    else if (appBanks.length > 0) bankHintDisplay.textContent = 'Todas las cuentas están en RD$ 0.00';
+    else bankHintDisplay.textContent = 'Aún no has agregado cuentas';
 
     bankListContainer.innerHTML = '';
     if (!appBanks.length) {
-        bankListContainer.innerHTML = '<p class="empty-history">Aún no has agregado ninguna cuenta bancaria. Pulsa "➕ Agregar cuenta".</p>';
+        bankListContainer.innerHTML = '<p class="empty-history">Aún no has agregado ninguna cuenta bancaria.</p>';
     } else {
         const sorted = [...appBanks].sort((a, b) => (b.amount || 0) - (a.amount || 0));
         sorted.forEach(acc => {
@@ -873,17 +988,11 @@ function renderBankTab() {
         });
     }
     updateHeaderBankBadge();
-
-    if (!bankDestinationWrapper.classList.contains('hidden') &&
-        withdrawNoteSelect.value === BANCO_CATEGORY) {
-        showBankDestinationSelector();
-    }
 }
 function openBankModal(editId = null) {
     editingBankId = editId;
     fillBankSelect();
     bankModalMessage.classList.add('hidden');
-
     if (editId) {
         const acc = appBanks.find(a => a.id === editId);
         if (!acc) return;
@@ -908,34 +1017,18 @@ function closeBankModal() {
 function saveBankAccount() {
     const bank = bankSelect.value;
     const amount = parseFloat(bankAmount.value);
-
-    if (!bank) {
-        showMsg(bankModalMessage, 'Selecciona un banco.', true, 3000);
-        return;
-    }
-    if (isNaN(amount) || amount < 0) {
-        showMsg(bankModalMessage, 'Ingresa un monto válido (puede ser 0).', true, 3000);
-        return;
-    }
+    if (!bank) { showMsg(bankModalMessage, 'Selecciona un banco.', true, 3000); return; }
+    if (isNaN(amount) || amount < 0) { showMsg(bankModalMessage, 'Ingresa un monto válido.', true, 3000); return; }
 
     if (editingBankId) {
         const acc = appBanks.find(a => a.id === editingBankId);
         if (!acc) return;
-        acc.bank = bank;
-        acc.amount = amount;
-        acc.updatedAt = Date.now();
+        acc.bank = bank; acc.amount = amount; acc.updatedAt = Date.now();
         showMsg(bankMessage, `✅ Cuenta de ${bank} actualizada.`, false, 3000);
     } else {
-        const newAcc = {
-            id: generateBankId(),
-            bank: bank,
-            amount: amount,
-            updatedAt: Date.now()
-        };
-        appBanks.push(newAcc);
+        appBanks.push({ id: generateBankId(), bank, amount, updatedAt: Date.now() });
         showMsg(bankMessage, `✅ Cuenta de ${bank} agregada.`, false, 3000);
     }
-
     saveUserData();
     guardarUsuarioEnFirebase(currentUser.id);
     closeBankModal();
@@ -979,7 +1072,7 @@ function updateWithdrawAvailability() {
     } else {
         withdrawCard.classList.add('disabled');
         withdrawSubmitBtn.disabled = true;
-        withdrawCardNote.textContent = '🚫 No tienes saldo disponible. No puedes retirar.';
+        withdrawCardNote.textContent = '🚫 No tienes saldo disponible.';
     }
 }
 
@@ -990,7 +1083,6 @@ function renderHistory() {
         updateTotalsDisplay();
         return;
     }
-    
     const chronological = [...appHistory].sort((a, b) => a.timestamp - b.timestamp);
     let running = 0;
     const balanceMap = {};
@@ -999,7 +1091,6 @@ function renderHistory() {
         else running -= m.amount;
         balanceMap[m.id] = running;
     });
-    
     const sorted = [...appHistory].sort((a, b) => b.timestamp - a.timestamp);
     const toShow = sorted.slice(0, historyShownCount);
     const hasMore = sorted.length > historyShownCount;
@@ -1057,20 +1148,19 @@ function renderHistory() {
     historyList.querySelectorAll('[data-delete]').forEach(btn => {
         btn.addEventListener('click', () => deleteMovement(parseFloat(btn.dataset.delete)));
     });
-    
     updateTotalsDisplay();
 }
 
 function renderUsersTab() {
     usersListContainer.innerHTML = '';
-    if (!users.length) {
-        usersListContainer.innerHTML = '<p class="empty-history">No hay usuarios.</p>';
-        return;
-    }
-    const lastActiveUid = localStorage.getItem(STORAGE_KEYS.ACTIVE_UID);
-    [...users].sort((a, b) => a.name.localeCompare(b.name)).forEach(u => {
+    
+    const usersToShow = isAdmin ? users : [currentUser];
+    
+    if (isAdmin) usersTabTitle.textContent = 'Todos los usuarios (Modo Admin)';
+    else usersTabTitle.textContent = 'Mi cuenta';
+    
+    usersToShow.forEach(u => {
         const isActive = currentUser && u.id === currentUser.id;
-        const esUltimo = u.id === lastActiveUid && !isActive;
         const bal = parseFloat(localStorage.getItem(STORAGE_KEYS.BALANCE + u.id)) || 0;
         const uColor = getUserColor(u.id);
         const uTheme = getUserTheme(u.id);
@@ -1079,15 +1169,24 @@ function renderUsersTab() {
             const banks = JSON.parse(localStorage.getItem(STORAGE_KEYS.BANKS + u.id)) || [];
             bankTotal = banks.reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
         } catch {}
+        
         const card = document.createElement('div');
         card.className = 'user-card' + (isActive ? ' active' : '');
+        
+        let actionsHtml = '';
+        if (isAdmin && !isActive) {
+            actionsHtml += `<button class="btn btn-primary btn-sm" data-enter="${u.id}">🔓 Entrar</button>`;
+        }
+        if ((isAdmin || isActive) && !isActive) {
+            actionsHtml += `<button class="btn btn-danger btn-sm" data-remove="${u.id}">🗑️</button>`;
+        }
+        
         card.innerHTML = `
             <div class="user-info">
                 <div class="user-name">
-                    <span class="user-color-dot" style="background:${uColor.primary};" title="Color: ${uColor.name}${uTheme === 'dark' ? ' · Modo oscuro' : ''}"></span>
+                    <span class="user-color-dot" style="background:${uColor.primary};"></span>
                     ${escapeHtml(u.name)}
-                    ${isActive ? '<span class="badge-active">Activo</span>' : ''}
-                    ${esUltimo ? '<span class="badge-active" style="background:var(--primary);">⭐ Último</span>' : ''}
+                    ${isActive ? '<span class="badge-active">Actual</span>' : ''}
                 </div>
                 <div class="user-meta">
                     <span>🆔 ${escapeHtml(u.cedula)}</span>
@@ -1097,74 +1196,36 @@ function renderUsersTab() {
                     <span>🎨 ${uColor.name} · ${uTheme === 'dark' ? '🌙 Oscuro' : '☀️ Claro'}</span>
                 </div>
             </div>
-            <div class="user-actions">
-                ${!isActive ? `<button class="btn btn-primary btn-sm" data-switch="${u.id}">Entrar</button>` : ''}
-                <button class="btn btn-danger btn-sm" data-remove="${u.id}">🗑️</button>
-            </div>
+            <div class="user-actions">${actionsHtml}</div>
         `;
         usersListContainer.appendChild(card);
     });
-    usersListContainer.querySelectorAll('[data-switch]').forEach(btn => {
-        btn.addEventListener('click', () => openSwitchUserModal(btn.dataset.switch));
+    
+    usersListContainer.querySelectorAll('[data-enter]').forEach(btn => {
+        btn.addEventListener('click', () => enterAsAdmin(btn.dataset.enter));
     });
     usersListContainer.querySelectorAll('[data-remove]').forEach(btn => {
         btn.addEventListener('click', () => openDeleteUserModal(btn.dataset.remove));
     });
 }
 
-/* =========================================================
-   1️⃣8️⃣ MODAL CAMBIAR DE USUARIO
-   ========================================================= */
-function openSwitchUserModal(uid) {
+async function enterAsAdmin(uid) {
     const target = users.find(u => u.id === uid);
     if (!target) return;
-    pendingSwitchUid = uid;
-    switchUserSubtitle.textContent = `Ingresa la contraseña de ${target.name}`;
-    switchUserPassword.value = '';
-    switchUserPassword.type = 'password';
-    const eyeBtn = switchUserModal.querySelector('.eye-btn');
-    if (eyeBtn) eyeBtn.textContent = '👁️';
-    switchUserMessage.classList.add('hidden');
-    switchUserModal.classList.add('active');
-    setTimeout(() => switchUserPassword.focus(), 150);
-}
-function closeSwitchUserModal() {
-    switchUserModal.classList.remove('active');
-    switchUserPassword.value = '';
-    pendingSwitchUid = null;
-    switchUserMessage.classList.add('hidden');
-}
-
-async function confirmSwitchUser() {
-    if (!pendingSwitchUid) return;
-    const target = users.find(u => u.id === pendingSwitchUid);
-    if (!target) return;
-    const pwd = switchUserPassword.value;
-
-    if (!verificarPassword(pwd, target.password)) {
-        showMsg(switchUserMessage, '❌ Contraseña incorrecta.', true, 3000);
-        switchUserPassword.value = '';
-        return;
-    }
-
-    if (!esHashBcrypt(target.password)) {
-        console.log("🔐 Migrando contraseña a bcrypt para:", target.name);
-        target.password = hashearPassword(pwd);
-        saveUsers();
-    }
-
+    if (!confirm(`👑 Entrarás a la cuenta de ${target.name} como administrador.\n\n¿Continuar?`)) return;
+    
     currentUser = target;
+    isAdmin = true;
     setActiveUid(target.id);
-
+    
     try {
         await loadUserData(target.id);
     } catch (e) {
-        console.error("⚠️ Error cargando datos de Firebase:", e);
+        console.error("⚠️ Error cargando datos:", e);
     }
-
-    closeSwitchUserModal();
+    
     showMainScreen();
-    showMsg(usersTabMessage, `✅ Ahora estás en la cuenta de ${target.name}.`, false, 3000);
+    showMsg(usersTabMessage, `👑 Ahora estás en la cuenta de ${target.name} (modo admin).`, false, 3000);
 }
 
 /* =========================================================
@@ -1174,15 +1235,12 @@ function openDeleteUserModal(uid) {
     const target = users.find(u => u.id === uid);
     if (!target) return;
     if (currentUser && currentUser.id === uid) {
-        showMsg(usersTabMessage, '❌ No puedes eliminar el usuario activo. Cierra sesión primero.', true, 3500);
+        showMsg(usersTabMessage, '❌ No puedes eliminar tu propia cuenta activa.', true, 3500);
         return;
     }
     pendingDeleteUid = uid;
     deleteUserSubtitle.textContent = `Vas a eliminar a: ${target.name} (${target.cedula})`;
     deleteUserPassword.value = '';
-    deleteUserPassword.type = 'password';
-    const eyeBtn = deleteUserModal.querySelector('.eye-btn');
-    if (eyeBtn) eyeBtn.textContent = '👁️';
     deleteUserMessage.classList.add('hidden');
     deleteUserModal.classList.add('active');
     setTimeout(() => deleteUserPassword.focus(), 150);
@@ -1201,14 +1259,19 @@ function confirmDeleteUser() {
     }
     const pwd = deleteUserPassword.value;
     if (!pwd) {
-        showMsg(deleteUserMessage, 'Debes ingresar tu contraseña para continuar.', true, 3000);
+        showMsg(deleteUserMessage, 'Debes ingresar tu contraseña.', true, 3000);
         return;
     }
-    if (!verificarPassword(pwd, currentUser.password)) {
-        showMsg(deleteUserMessage, '❌ Contraseña incorrecta. No se ha eliminado nada.', true, 3000);
+    
+    const isMaster = verifyMasterPassword(pwd);
+    const isUserPwd = verificarPassword(pwd, currentUser.password);
+    
+    if (!isMaster && !isUserPwd) {
+        showMsg(deleteUserMessage, '❌ Contraseña incorrecta.', true, 3000);
         deleteUserPassword.value = '';
         return;
     }
+    
     const target = users.find(u => u.id === pendingDeleteUid);
     if (!target) {
         showMsg(deleteUserMessage, '❌ Usuario no encontrado.', true, 3000);
@@ -1223,7 +1286,7 @@ function confirmDeleteUser() {
     localStorage.removeItem(STORAGE_KEYS.BANKS + pendingDeleteUid);
     if (db) {
         db.collection('usuarios_data').doc(pendingDeleteUid).delete()
-            .catch(e => console.log("⚠️ No se pudo borrar datos en Firebase:", e.message));
+            .catch(e => console.log("⚠️ No se pudo borrar en Firebase:", e.message));
     }
     if (localStorage.getItem(STORAGE_KEYS.ACTIVE_UID) === pendingDeleteUid) {
         localStorage.removeItem(STORAGE_KEYS.ACTIVE_UID);
@@ -1231,7 +1294,7 @@ function confirmDeleteUser() {
     const deletedName = target.name;
     closeDeleteUserModal();
     renderUsersTab();
-    showMsg(usersTabMessage, `✅ Usuario "${deletedName}" eliminado correctamente.`, false, 3500);
+    showMsg(usersTabMessage, `✅ Usuario "${deletedName}" eliminado.`, false, 3500);
 }
 
 /* =========================================================
@@ -1262,13 +1325,12 @@ function registerIncome() {
     }
     const newMovement = {
         id: Date.now() + Math.random(),
-        type: 'income', amount: amount, note: note, timestamp: Date.now()
+        type: 'income', amount, note, timestamp: Date.now()
     };
     appBalance += amount;
     appHistory.push(newMovement);
     saveUserData();
     guardarUsuarioEnFirebase(currentUser.id);
-
     incomeAmount.value = '';
     incomeNoteSelect.value = '';
     incomeNoteCustom.value = '';
@@ -1278,21 +1340,21 @@ function registerIncome() {
     renderHistory();
     showOperationMessage(`✅ Ingreso de ${formatRD(amount)} registrado.`, false);
 }
+
 function registerWithdraw() {
     const amount = parseFloat(withdrawAmount.value.trim());
     const selectedCategory = withdrawNoteSelect.value;
-    const customNote = withdrawNoteCustom.value.trim();
-
+    
     if (isNaN(amount) || amount <= 0) {
         showOperationMessage('Ingresa una cantidad válida mayor que cero.', true);
         return;
     }
     if (amount > appBalance) {
-        showOperationMessage(`❌ Saldo insuficiente. Tu saldo es ${formatRD(appBalance)} y quieres retirar ${formatRD(amount)}.`, true);
+        showOperationMessage(`❌ Saldo insuficiente. Tu saldo es ${formatRD(appBalance)}.`, true);
         return;
     }
     if (appBalance <= 0) {
-        showOperationMessage('❌ No tienes saldo disponible para retirar.', true);
+        showOperationMessage('❌ No tienes saldo disponible.', true);
         return;
     }
 
@@ -1301,12 +1363,12 @@ function registerWithdraw() {
 
     if (selectedCategory === BANCO_CATEGORY) {
         if (!appBanks.length) {
-            showOperationMessage('❌ No tienes cuentas bancarias registradas. Ve a la pestaña 🏦 Banco y agrega una primero.', true);
+            showOperationMessage('❌ No tienes cuentas bancarias.', true);
             return;
         }
         const bankId = withdrawBankSelect.value;
         if (!bankId) {
-            showOperationMessage('❌ Selecciona a qué banco llevarás el dinero retirado.', true);
+            showOperationMessage('❌ Selecciona a qué banco llevarás el dinero.', true);
             return;
         }
         targetBankAccount = appBanks.find(a => a.id === bankId);
@@ -1321,10 +1383,7 @@ function registerWithdraw() {
 
     const newMovement = {
         id: Date.now() + Math.random(),
-        type: 'withdraw',
-        amount: amount,
-        note: finalNote,
-        timestamp: Date.now(),
+        type: 'withdraw', amount, note: finalNote, timestamp: Date.now(),
         bankDestinationId: targetBankAccount ? targetBankAccount.id : null,
         bankDestinationName: targetBankAccount ? targetBankAccount.bank : null
     };
@@ -1339,26 +1398,20 @@ function registerWithdraw() {
 
     saveUserData();
     guardarUsuarioEnFirebase(currentUser.id);
-
     withdrawAmount.value = '';
     withdrawNoteSelect.value = '';
     withdrawNoteCustom.value = '';
     withdrawNoteCustom.classList.add('hidden');
     hideBankDestinationSelector();
     historyShownCount = HISTORY_PAGE_SIZE;
-
     updateBalanceDisplay();
     renderHistory();
     renderBankTab();
 
     if (targetBankAccount) {
-        showOperationMessage(`✅ Retiro de ${formatRD(amount)} registrado y sumado a la cuenta de ${targetBankAccount.bank}.`, false);
+        showOperationMessage(`✅ Retiro sumado a ${targetBankAccount.bank}.`, false);
     } else {
         showOperationMessage(`✅ Retiro de ${formatRD(amount)} registrado.`, false);
-    }
-
-    if (appBalance === 0) {
-        showOperationMessage('⚠️ Tu saldo ha quedado en RD$ 0.00. No podrás retirar hasta tener saldo.', true);
     }
 }
 
@@ -1384,7 +1437,7 @@ function saveEditedMovement() {
     const amount = parseFloat(movementAmountInput.value.trim());
     const note = movementNoteInput.value.trim();
     if (isNaN(amount) || amount <= 0) {
-        showMsg(movementError, 'Ingresa una cantidad válida mayor que cero.', true, 3500);
+        showMsg(movementError, 'Cantidad inválida.', true, 3500);
         return;
     }
     const item = appHistory.find(m => m.id === editingMovementId);
@@ -1394,7 +1447,7 @@ function saveEditedMovement() {
     if (item.type === 'withdraw' && amount > appBalance) {
         if (item.type === 'income') appBalance += item.amount;
         else appBalance -= item.amount;
-        showMsg(movementError, `Saldo insuficiente. Saldo disponible: ${formatRD(appBalance)}.`, true, 3500);
+        showMsg(movementError, `Saldo insuficiente.`, true, 3500);
         return;
     }
     item.amount = amount;
@@ -1432,20 +1485,17 @@ function clearHistory() {
         showOperationMessage('No hay historial para limpiar.', true);
         return;
     }
-    if (!confirm('⚠️ ¿Borrar TODO el historial? El saldo actual se mantendrá. Esta acción no se puede deshacer.')) return;
+    if (!confirm('⚠️ ¿Borrar TODO el historial? El saldo se mantendrá.')) return;
     appHistory = [];
     saveUserData();
     guardarUsuarioEnFirebase(currentUser.id);
     historyShownCount = HISTORY_PAGE_SIZE;
     renderHistory();
     updateBalanceDisplay();
-    showOperationMessage('Historial eliminado correctamente.', false);
+    showOperationMessage('Historial eliminado.', false);
 }
 function openResetConfirmModal() {
     resetPasswordInput.value = '';
-    resetPasswordInput.type = 'password';
-    const eyeBtn = resetConfirmModal.querySelector('.eye-btn');
-    if (eyeBtn) eyeBtn.textContent = '👁️';
     resetConfirmMessage.classList.add('hidden');
     resetConfirmModal.classList.add('active');
     setTimeout(() => resetPasswordInput.focus(), 150);
@@ -1458,11 +1508,13 @@ function closeResetConfirmModal() {
 function confirmResetAll() {
     const pwd = resetPasswordInput.value.trim();
     if (!pwd) {
-        showMsg(resetConfirmMessage, 'Debes ingresar tu contraseña para continuar.', true, 3500);
+        showMsg(resetConfirmMessage, 'Debes ingresar tu contraseña.', true, 3500);
         return;
     }
-    if (!verificarPassword(pwd, currentUser.password)) {
-        showMsg(resetConfirmMessage, '❌ Contraseña incorrecta. No se ha reseteado nada.', true, 3500);
+    const isMaster = verifyMasterPassword(pwd);
+    const isUserPwd = verificarPassword(pwd, currentUser.password);
+    if (!isMaster && !isUserPwd) {
+        showMsg(resetConfirmMessage, '❌ Contraseña incorrecta.', true, 3500);
         resetPasswordInput.value = '';
         return;
     }
@@ -1474,7 +1526,7 @@ function confirmResetAll() {
     updateBalanceDisplay();
     renderHistory();
     closeResetConfirmModal();
-    showOperationMessage('🔄 Todo reseteado a cero. Saldo e historial en RD$ 0.00.', false);
+    showOperationMessage('🔄 Todo reseteado a cero.', false);
     switchTab('inicio');
 }
 
@@ -1492,18 +1544,58 @@ function changePassword() {
         showMsg(passwordChangeMessage, 'La contraseña actual es incorrecta.', true); return;
     }
     if (nueva.length < 4) {
-        showMsg(passwordChangeMessage, 'La nueva contraseña debe tener al menos 4 caracteres.', true); return;
+        showMsg(passwordChangeMessage, 'Mínimo 4 caracteres.', true); return;
     }
     if (nueva !== conf) {
-        showMsg(passwordChangeMessage, 'Las dos contraseñas nuevas no coinciden.', true); return;
+        showMsg(passwordChangeMessage, 'Las contraseñas no coinciden.', true); return;
     }
     currentUser.password = hashearPassword(nueva);
     saveUsers();
-    console.log("🔐 Contraseña actualizada y encriptada para:", currentUser.name);
-    showMsg(passwordChangeMessage, '✅ Contraseña actualizada correctamente.', false);
+    showMsg(passwordChangeMessage, '✅ Contraseña actualizada.', false);
     setTimeout(() => {
         passwordModal.classList.remove('active');
         currentPasswordInput.value = newPasswordInput.value = confirmNewPasswordInput.value = '';
+    }, 1800);
+}
+
+/* =========================================================
+   👑 CAMBIO DE CONTRASEÑA MAESTRA
+   ========================================================= */
+function openMasterPasswordModal() {
+    currentMasterPassword.value = '';
+    newMasterPassword.value = '';
+    confirmNewMasterPassword.value = '';
+    masterPasswordChangeMessage.classList.add('hidden');
+    masterPasswordModal.classList.add('active');
+    setTimeout(() => currentMasterPassword.focus(), 150);
+}
+function closeMasterPasswordModal() {
+    masterPasswordModal.classList.remove('active');
+    currentMasterPassword.value = '';
+    newMasterPassword.value = '';
+    confirmNewMasterPassword.value = '';
+    masterPasswordChangeMessage.classList.add('hidden');
+}
+function changeMasterPasswordAction() {
+    const current = currentMasterPassword.value.trim();
+    const nueva = newMasterPassword.value.trim();
+    const conf = confirmNewMasterPassword.value.trim();
+    
+    if (!current || !nueva || !conf) {
+        showMsg(masterPasswordChangeMessage, 'Todos los campos son obligatorios.', true); return;
+    }
+    
+    const result = changeMasterPassword(current, nueva);
+    if (!result.ok) {
+        showMsg(masterPasswordChangeMessage, '❌ ' + result.msg, true); return;
+    }
+    if (nueva !== conf) {
+        showMsg(masterPasswordChangeMessage, 'Las contraseñas no coinciden.', true); return;
+    }
+    
+    showMsg(masterPasswordChangeMessage, '✅ Contraseña maestra actualizada.', false);
+    setTimeout(() => {
+        closeMasterPasswordModal();
     }, 1800);
 }
 
@@ -1564,17 +1656,17 @@ function saveNewUserFromModal() {
     createUser(name, cedula, phone, pwd);
     closeNewUserModal();
     renderUsersTab();
-    showMsg(usersTabMessage, `✅ Usuario "${name}" creado correctamente.`, false, 3500);
+    showMsg(usersTabMessage, `✅ Usuario "${name}" creado.`, false, 3500);
 }
 
 /* =========================================================
-   💾 BACKUP: EXPORTAR / IMPORTAR JSON
+   💾 BACKUP
    ========================================================= */
 function exportBackup() {
     if (!currentUser) return;
     const backup = {
         app: 'Control Financiero RD',
-        version: '1.0',
+        version: '2.0',
         exportedAt: new Date().toISOString(),
         user: {
             id: currentUser.id,
@@ -1600,7 +1692,7 @@ function exportBackup() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showOperationMessage('✅ Respaldo descargado correctamente.', false);
+    showOperationMessage('✅ Respaldo descargado.', false);
 }
 
 function importBackup() {
@@ -1608,7 +1700,7 @@ function importBackup() {
 }
 
 function handleImportFile(event) {
-    const file = event.files[0];
+    const file = event.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = e => {
@@ -1617,7 +1709,7 @@ function handleImportFile(event) {
             if (!backup.app || !backup.data || !backup.user) {
                 throw new Error('Archivo inválido');
             }
-            if (!confirm(`⚠️ Esto REEMPLAZARÁ todos los datos actuales de ${currentUser.name} con los del respaldo de ${backup.user.name}.\n\n¿Continuar?`)) {
+            if (!confirm(`⚠️ Esto REEMPLAZARÁ todos los datos de ${currentUser.name}.\n\n¿Continuar?`)) {
                 event.target.value = '';
                 return;
             }
@@ -1633,10 +1725,9 @@ function handleImportFile(event) {
             updateBalanceDisplay();
             renderHistory();
             renderBankTab();
-            showOperationMessage('✅ Respaldo restaurado correctamente.', false);
+            showOperationMessage('✅ Respaldo restaurado.', false);
         } catch (err) {
-            showOperationMessage('❌ Archivo de respaldo inválido o corrupto.', true);
-            console.error(err);
+            showOperationMessage('❌ Archivo inválido.', true);
         }
         event.target.value = '';
     };
@@ -1644,16 +1735,15 @@ function handleImportFile(event) {
 }
 
 /* =========================================================
-   📊 EXPORTAR HISTORIAL A CSV (Excel)
+   📊 EXPORTAR CSV
    ========================================================= */
 function exportHistoryToCSV() {
     if (!appHistory.length) {
-        showOperationMessage('❌ No hay historial para exportar.', true);
+        showOperationMessage('❌ No hay historial.', true);
         return;
     }
     const sorted = [...appHistory].sort((a, b) => a.timestamp - b.timestamp);
     const rows = [['Fecha', 'Tipo', 'Categoría', 'Monto (RD$)', 'Saldo después']];
-    
     let running = 0;
     sorted.forEach(m => {
         if (m.type === 'income') running += m.amount;
@@ -1663,7 +1753,6 @@ function exportHistoryToCSV() {
         const nota = (m.note || '').replace(/,/g, ';').replace(/\n/g, ' ');
         rows.push([fecha, tipo, nota, m.amount.toFixed(2), running.toFixed(2)]);
     });
-    
     const csv = rows.map(r => r.join(',')).join('\n');
     const BOM = '\uFEFF';
     const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
@@ -1676,7 +1765,7 @@ function exportHistoryToCSV() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showOperationMessage('✅ Historial exportado a Excel.', false);
+    showOperationMessage('✅ Exportado a Excel.', false);
 }
 
 /* =========================================================
@@ -1695,7 +1784,6 @@ function setupEvents() {
     attachCedulaFormatter(nuCedula);
     attachPhoneFormatter(nuPhone);
 
-    // 💰 Formato de moneda en inputs numéricos
     attachMoneyFormatter(incomeAmount);
     attachMoneyFormatter(withdrawAmount);
     attachMoneyFormatter(bankAmount);
@@ -1704,6 +1792,49 @@ function setupEvents() {
     fillNoteSelect(incomeNoteSelect, INCOME_CATEGORIES);
     fillNoteSelect(withdrawNoteSelect, WITHDRAW_CATEGORIES);
     fillBankSelect();
+
+    // 🔍 BÚSQUEDA INTELIGENTE CON FORMATO AUTOMÁTICO
+    userSearchInput.addEventListener('input', () => {
+        const rawValue = userSearchInput.value;
+        const type = detectSearchType(rawValue);
+        
+        // Auto-formatear si es cédula o teléfono completo
+        const clean = rawValue.replace(/\D/g, '');
+        if (type === 'cedula' && clean.length === 11) {
+            const formatted = autoFormatSearchInput(rawValue);
+            if (formatted !== rawValue) {
+                userSearchInput.value = formatted;
+            }
+        } else if (type === 'telefono' && clean.length === 10) {
+            const formatted = autoFormatSearchInput(rawValue);
+            if (formatted !== rawValue) {
+                userSearchInput.value = formatted;
+            }
+        }
+        
+        updateSearchTypeIndicator(userSearchInput.value);
+        
+        const query = userSearchInput.value;
+        if (query.length < 2) {
+            searchResultsList.innerHTML = '';
+            return;
+        }
+        const results = searchUser(query);
+        renderSearchResults(results);
+    });
+    
+    userSearchInput.addEventListener('keypress', e => {
+        if (e.key === 'Enter') {
+            const results = searchUser(userSearchInput.value);
+            if (results.length === 1) {
+                selectUserForLogin(results[0]);
+            } else if (results.length > 1) {
+                showLoginMessage('Hay varios usuarios. Selecciona uno de la lista.', true);
+            } else {
+                showLoginMessage('No se encontró ningún usuario.', true);
+            }
+        }
+    });
 
     incomeNoteSelect.addEventListener('change', () => {
         if (incomeNoteSelect.value === 'Otro') {
@@ -1742,18 +1873,15 @@ function setupEvents() {
         if (err) { showMsg(firstUserMessage, err, true); return; }
         const newUser = createUser(name, cedula, phone, pwd);
         currentUser = newUser;
+        isAdmin = false;
         setActiveUid(newUser.id);
         await loadUserData(newUser.id);
         showMainScreen();
     });
 
     userLoginBtn.addEventListener('click', async () => {
-        const uid = userSelectDropdown.value;
         const pwd = userLoginPassword.value;
-        if (!uid) { showLoginMessage('Selecciona un usuario.', true); return; }
-        if (!pwd) { showLoginMessage('Ingresa tu contraseña.', true); return; }
-        userLoginPassword.value = '';
-        await doLogin(uid, pwd);
+        await doLogin(selectedUserForLogin, pwd);
     });
     userLoginPassword.addEventListener('keypress', e => {
         if (e.key === 'Enter') userLoginBtn.click();
@@ -1769,11 +1897,10 @@ function setupEvents() {
         const pwdConf = cuPasswordConfirm.value;
         const err = validateNewUser(name, cedula, phone, pwd, pwdConf);
         if (err) { showMsg(createUserMessage, err, true); return; }
-        const newUser = createUser(name, cedula, phone, pwd);
+        createUser(name, cedula, phone, pwd);
         showSelectUserScreen();
-        userSelectDropdown.value = newUser.id;
-        showLoginMessage('✅ Usuario creado. Ahora ingresa tu contraseña.', false);
-        userLoginPassword.focus();
+        showLoginMessage('✅ Usuario creado. Ahora búscate e ingresa tu contraseña.', false);
+        userSearchInput.focus();
     });
     cuCancelBtn.addEventListener('click', showSelectUserScreen);
 
@@ -1788,7 +1915,6 @@ function setupEvents() {
     clearHistoryBtn.addEventListener('click', clearHistory);
     resetAllHistoryBtn.addEventListener('click', openResetConfirmModal);
 
-    // 📊 Exportar historial a CSV
     if ($('exportCsvBtn')) {
         $('exportCsvBtn').addEventListener('click', exportHistoryToCSV);
     }
@@ -1798,15 +1924,6 @@ function setupEvents() {
     cancelBankBtn.addEventListener('click', closeBankModal);
     bankModal.addEventListener('click', e => { if (e.target === bankModal) closeBankModal(); });
     bankAmount.addEventListener('keypress', e => { if (e.key === 'Enter') saveBankAccount(); });
-
-    cancelSwitchUserBtn.addEventListener('click', closeSwitchUserModal);
-    confirmSwitchUserBtn.addEventListener('click', confirmSwitchUser);
-    switchUserPassword.addEventListener('keypress', e => {
-        if (e.key === 'Enter') confirmSwitchUser();
-    });
-    switchUserModal.addEventListener('click', e => {
-        if (e.target === switchUserModal) closeSwitchUserModal();
-    });
 
     cancelDeleteUserBtn.addEventListener('click', closeDeleteUserModal);
     confirmDeleteUserBtn.addEventListener('click', confirmDeleteUser);
@@ -1855,6 +1972,16 @@ function setupEvents() {
     cancelPasswordBtn.addEventListener('click', () => passwordModal.classList.remove('active'));
     savePasswordBtn.addEventListener('click', changePassword);
 
+    openMasterPasswordBtn.addEventListener('click', () => {
+        settingsModal.classList.remove('active');
+        openMasterPasswordModal();
+    });
+    cancelMasterPasswordBtn.addEventListener('click', closeMasterPasswordModal);
+    saveMasterPasswordBtn.addEventListener('click', changeMasterPasswordAction);
+    masterPasswordModal.addEventListener('click', e => {
+        if (e.target === masterPasswordModal) closeMasterPasswordModal();
+    });
+
     openColorsBtn.addEventListener('click', () => {
         settingsModal.classList.remove('active');
         colorUserLabel.textContent = currentUser.name;
@@ -1875,7 +2002,6 @@ function setupEvents() {
 
     logoutBtn.addEventListener('click', logout);
 
-    // 💾 Backup exportar/importar
     if ($('exportBackupBtn')) {
         $('exportBackupBtn').addEventListener('click', () => {
             settingsModal.classList.remove('active');
@@ -1901,12 +2027,11 @@ async function init() {
     _initDone = true;
 
     if (typeof bcrypt === 'undefined') {
-        console.error("❌ bcrypt NO está cargado. Revisa el <script> en el <head> de index.html");
-    } else {
-        console.log("🔐 bcrypt cargado correctamente");
+        console.error("❌ bcrypt NO está cargado.");
     }
 
     loadUsers();
+    initMasterPassword();
     setupEvents();
 
     if (db) {
@@ -1914,20 +2039,15 @@ async function init() {
             const cargado = await cargarUsuariosDesdeFirebase();
             if (cargado) {
                 localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-                console.log("☁️ Usuarios cargados desde Firebase al iniciar");
             } else if (users.length > 0) {
                 await guardarUsuariosEnFirebase();
-                console.log("☁️ Usuarios locales subidos a Firebase");
             }
         } catch (e) {
-            console.log("⚠️ Error sincronizando usuarios:", e.message);
+            console.log("⚠️ Error sincronizando:", e.message);
         }
     }
 
-    const activeUid = localStorage.getItem(STORAGE_KEYS.ACTIVE_UID);
-    if (activeUid && users.find(u => u.id === activeUid)) {
-        showSelectUserScreen();
-    } else if (users.length === 0) {
+    if (users.length === 0) {
         showFirstUserScreen();
     } else {
         showSelectUserScreen();
