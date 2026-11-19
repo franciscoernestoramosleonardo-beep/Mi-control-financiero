@@ -319,11 +319,9 @@ function showLoginMessage(text, isError = true) { showMsg(selectUserMessage, tex
 function verificarPassword(inputPwd, storedPassword) {
     if (!storedPassword) return false;
     try {
-        // Si el storedPassword es un hash bcrypt válido
         if (/^\$2[aby]\$/.test(storedPassword)) {
             return bcrypt.compareSync(inputPwd, storedPassword);
         }
-        // Si no (usuario viejo con texto plano), comparación directa
         return inputPwd === storedPassword;
     } catch (e) {
         console.warn("⚠️ Error verificando contraseña:", e.message);
@@ -337,7 +335,7 @@ function hashearPassword(password) {
         return bcrypt.hashSync(password, 10);
     } catch (e) {
         console.error("❌ Error encriptando contraseña:", e.message);
-        return password; // fallback (no debería ocurrir)
+        return password;
     }
 }
 
@@ -569,7 +567,7 @@ function showMainScreen() {
 }
 
 /* =========================================================
-   1️⃣1️⃣ DROPDOWN
+   1️⃣1️⃣ DROPDOWN — con último usuario preseleccionado
    ========================================================= */
 function renderUserDropdown() {
     userSelectDropdown.innerHTML = '';
@@ -580,12 +578,29 @@ function renderUserDropdown() {
         userSelectDropdown.appendChild(opt);
         return;
     }
-    [...users].sort((a, b) => a.name.localeCompare(b.name)).forEach(u => {
+
+    // 🔥 Leer el último usuario activo guardado
+    const lastActiveUid = localStorage.getItem(STORAGE_KEYS.ACTIVE_UID);
+
+    // 🔥 Ordenar: primero el último activo, luego el resto alfabéticamente
+    const sorted = [...users].sort((a, b) => {
+        if (a.id === lastActiveUid) return -1;
+        if (b.id === lastActiveUid) return 1;
+        return a.name.localeCompare(b.name);
+    });
+
+    sorted.forEach(u => {
         const opt = document.createElement('option');
         opt.value = u.id;
-        opt.textContent = `${u.name} · ${u.cedula}`;
+        const esUltimo = (u.id === lastActiveUid);
+        opt.textContent = `${u.name} · ${u.cedula}${esUltimo ? '  ⭐ (último)' : ''}`;
         userSelectDropdown.appendChild(opt);
     });
+
+    // 🔥 Preseleccionar el último usuario activo
+    if (lastActiveUid && users.some(u => u.id === lastActiveUid)) {
+        userSelectDropdown.value = lastActiveUid;
+    }
 }
 
 /* =========================================================
@@ -608,7 +623,7 @@ function createUser(name, cedula, phone, password) {
 
     const newUser = {
         id: generateId(), name: name.trim(), cedula: cedula.trim(),
-        phone: phone.trim(), password: hashedPassword   // ✅ encriptada
+        phone: phone.trim(), password: hashedPassword
     };
     users.push(newUser);
     saveUsers();
@@ -618,7 +633,6 @@ function createUser(name, cedula, phone, password) {
     setUserTheme(newUser.id, 'light');
     setUserColor(newUser.id, COLOR_PALETTE[0]);
 
-    // 🔥 Crear el documento financiero vacío en Firebase
     appBalance = 0;
     appHistory = [];
     appBanks = [];
@@ -643,20 +657,21 @@ function loginUser(uid, password) {
     return { ok: true, user };
 }
 
-/* 🔐 doLogin: migra contraseñas viejas a bcrypt al iniciar sesión */
+/* 🔐 doLogin: migra contraseñas viejas + guarda como último usuario */
 async function doLogin(uid, password) {
     const result = loginUser(uid, password);
     if (!result.ok) { showLoginMessage('❌ ' + result.msg, true); return; }
 
     currentUser = result.user;
 
-    // 🔐 MIGRACIÓN AUTOMÁTICA: si la contraseña no es un hash bcrypt, encriptarla ahora
+    // 🔐 Migración automática a bcrypt si la contraseña vieja era texto plano
     if (!esHashBcrypt(currentUser.password)) {
         console.log("🔐 Migrando contraseña de texto plano a bcrypt para:", currentUser.name);
         currentUser.password = hashearPassword(password);
-        saveUsers();   // guarda en localStorage + Firebase
+        saveUsers();
     }
 
+    // 🔥 Guardar como último usuario activo
     setActiveUid(currentUser.id);
     showLoginMessage('⏳ Cargando datos...', false, 1500);
 
@@ -671,7 +686,8 @@ async function doLogin(uid, password) {
 
 function logout() {
     settingsModal.classList.remove('active');
-    setActiveUid(null);
+    // 🔥 NO borramos el ACTIVE_UID: se mantiene para que al reabrir se preseleccione
+    // setActiveUid(null);
     currentUser = null;
     appBalance = 0;
     appHistory = [];
@@ -1008,8 +1024,10 @@ function renderUsersTab() {
         usersListContainer.innerHTML = '<p class="empty-history">No hay usuarios.</p>';
         return;
     }
+    const lastActiveUid = localStorage.getItem(STORAGE_KEYS.ACTIVE_UID);
     [...users].sort((a, b) => a.name.localeCompare(b.name)).forEach(u => {
         const isActive = currentUser && u.id === currentUser.id;
+        const esUltimo = u.id === lastActiveUid && !isActive;
         const bal = parseFloat(localStorage.getItem(STORAGE_KEYS.BALANCE + u.id)) || 0;
         const uColor = getUserColor(u.id);
         const uTheme = getUserTheme(u.id);
@@ -1026,6 +1044,7 @@ function renderUsersTab() {
                     <span class="user-color-dot" style="background:${uColor.primary};" title="Color: ${uColor.name}${uTheme === 'dark' ? ' · Modo oscuro' : ''}"></span>
                     ${escapeHtml(u.name)}
                     ${isActive ? '<span class="badge-active">Activo</span>' : ''}
+                    ${esUltimo ? '<span class="badge-active" style="background:var(--primary);">⭐ Último</span>' : ''}
                 </div>
                 <div class="user-meta">
                     <span>🆔 ${escapeHtml(u.cedula)}</span>
@@ -1073,7 +1092,6 @@ function closeSwitchUserModal() {
     switchUserMessage.classList.add('hidden');
 }
 
-/* 🔐 confirmSwitchUser: verifica con bcrypt + migra si es vieja */
 async function confirmSwitchUser() {
     if (!pendingSwitchUid) return;
     const target = users.find(u => u.id === pendingSwitchUid);
@@ -1086,7 +1104,6 @@ async function confirmSwitchUser() {
         return;
     }
 
-    // 🔐 Migración automática si es contraseña vieja
     if (!esHashBcrypt(target.password)) {
         console.log("🔐 Migrando contraseña a bcrypt para:", target.name);
         target.password = hashearPassword(pwd);
@@ -1133,8 +1150,6 @@ function closeDeleteUserModal() {
     pendingDeleteUid = null;
     deleteUserMessage.classList.add('hidden');
 }
-
-/* 🔐 confirmDeleteUser: verifica con bcrypt */
 function confirmDeleteUser() {
     if (!pendingDeleteUid) return;
     if (!currentUser) {
@@ -1166,6 +1181,10 @@ function confirmDeleteUser() {
     if (db) {
         db.collection('usuarios_data').doc(pendingDeleteUid).delete()
             .catch(e => console.log("⚠️ No se pudo borrar datos en Firebase:", e.message));
+    }
+    // Si el usuario eliminado era el último activo, limpiar el ACTIVE_UID
+    if (localStorage.getItem(STORAGE_KEYS.ACTIVE_UID) === pendingDeleteUid) {
+        localStorage.removeItem(STORAGE_KEYS.ACTIVE_UID);
     }
     const deletedName = target.name;
     closeDeleteUserModal();
@@ -1386,8 +1405,6 @@ function closeResetConfirmModal() {
     resetPasswordInput.value = '';
     resetConfirmMessage.classList.add('hidden');
 }
-
-/* 🔐 confirmResetAll: verifica con bcrypt */
 function confirmResetAll() {
     const pwd = resetPasswordInput.value.trim();
     if (!pwd) {
@@ -1413,7 +1430,6 @@ function confirmResetAll() {
 /* =========================================================
    2️⃣3️⃣ CAMBIO DE CONTRASEÑA
    ========================================================= */
-/* 🔐 changePassword: verifica actual con bcrypt + encripta la nueva */
 function changePassword() {
     const current = currentPasswordInput.value.trim();
     const nueva = newPasswordInput.value.trim();
@@ -1693,7 +1709,6 @@ async function init() {
     if (_initDone) return;
     _initDone = true;
 
-    // Verificar que bcrypt esté disponible
     if (typeof bcrypt === 'undefined') {
         console.error("❌ bcrypt NO está cargado. Revisa el <script> en el <head> de index.html");
     } else {
@@ -1720,7 +1735,7 @@ async function init() {
 
     const activeUid = localStorage.getItem(STORAGE_KEYS.ACTIVE_UID);
     if (activeUid && users.find(u => u.id === activeUid)) {
-        showSelectUserScreen();
+        showSelectUserScreen();   // el dropdown mostrará ese usuario primero + seleccionado
     } else if (users.length === 0) {
         showFirstUserScreen();
     } else {
