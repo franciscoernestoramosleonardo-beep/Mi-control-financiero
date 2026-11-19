@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="icono.png">
 <link rel="manifest" href="manifest.json">
 
-<meta name="theme-color" content="#2E7D32">
+<meta name="theme-color" content="#1e4a7a">
 
 <!-- 🔐 bcrypt para encriptar contraseñas (debe cargarse ANTES de app.js) -->
 <script src="https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js"></script>
@@ -194,6 +194,7 @@
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
                 <h2 style="font-size:1.2rem;">📋 Historial de <span id="historyUserName">—</span></h2>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button class="btn btn-success btn-sm" id="exportCsvBtn">📊 Exportar a Excel</button>
                     <button class="btn btn-outline btn-sm" id="clearHistoryBtn">🗑️ Limpiar historial</button>
                     <button class="btn btn-danger btn-sm" id="resetAllHistoryBtn">🔄 Resetear todo a cero</button>
                 </div>
@@ -393,6 +394,21 @@
                     <div class="desc">Personaliza la apariencia (solo para este usuario)</div>
                 </span>
             </button>
+            <button class="settings-item" id="exportBackupBtn">
+                <span class="icon">💾</span>
+                <span class="info">
+                    <div class="title">Exportar respaldo (JSON)</div>
+                    <div class="desc">Descarga todos tus datos para seguridad</div>
+                </span>
+            </button>
+            <button class="settings-item" id="importBackupBtn">
+                <span class="icon">📥</span>
+                <span class="info">
+                    <div class="title">Importar respaldo</div>
+                    <div class="desc">Restaura datos desde un archivo JSON</div>
+                </span>
+            </button>
+            <input type="file" id="importBackupFile" accept=".json" style="display:none;">
             <button class="settings-item" id="openHelpBtn">
                 <span class="icon">❓</span>
                 <span class="info">
@@ -474,6 +490,9 @@
             <li><b>🔐 Seguridad:</b> las contraseñas se guardan encriptadas con bcrypt, nunca en texto plano.</li>
             <li><b>🗑️ Eliminar usuario:</b> pide tu contraseña para confirmar.</li>
             <li><b>🔄 Resetear todo a cero:</b> pide contraseña y pone saldo + historial en cero (mantiene banco y colores).</li>
+            <li><b>💾 Respaldo:</b> exporta tus datos a un archivo JSON y restaura cuando quieras.</li>
+            <li><b>📊 Exportar a Excel:</b> descarga tu historial en formato CSV compatible con Excel.</li>
+            <li><b>📱 PWA:</b> puedes instalar esta app en tu celular desde el menú del navegador.</li>
         </ul>
         <div class="modal-actions">
             <button class="btn btn-primary" id="closeHelpBtn">Entendido</button>
@@ -487,5 +506,16 @@
 
 <!-- Tu aplicación -->
 <script src="app.js"></script>
+
+<!-- 📱 Service Worker para PWA (instalable y offline) -->
+<script>
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('✅ Service Worker registrado. App instalable.'))
+            .catch(err => console.warn('⚠️ SW error:', err));
+    });
+}
+</script>
 </body>
 </html>

@@ -1,16 +1,27 @@
 {
-  "name": "Control Financiero",
+  "name": "Control Financiero Multiusuario",
   "short_name": "Control$",
-  "description": "Mi control de ingresos y gastos",
+  "description": "Mi control de ingresos y gastos con respaldo en la nube",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#ffffff",
-  "theme_color": "#2E7D32",
+  "theme_color": "#1e4a7a",
+  "lang": "es-DO",
+  "categories": ["finance", "productivity"],
   "icons": [
     {
       "src": "icono.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icono.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

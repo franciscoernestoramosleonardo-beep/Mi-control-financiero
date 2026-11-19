@@ -809,3 +809,9 @@ body.dark .message-success { background: #143021; color: #8fe0b0; border-color: 
     .header-bank-badge { font-size: .72rem; padding: 6px 10px; }
     .bank-account-amount { font-size: 1.2rem; }
 }
+/* ========================= CARGAR MÁS ========================= */
+.load-more-item {
+    list-style: none;
+    padding: 10px 0;
+    text-align: center;
+}

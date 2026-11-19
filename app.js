@@ -52,6 +52,10 @@ let pendingDeleteUid = null;
 let editingBankId = null;
 let _initDone = false;
 
+// 📄 Paginación del historial
+const HISTORY_PAGE_SIZE = 50;
+let historyShownCount = HISTORY_PAGE_SIZE;
+
 /* =========================================================
    3️⃣ 🔥 FIREBASE
    ========================================================= */
@@ -432,6 +436,31 @@ function attachNameFormatter(input) {
 }
 
 /* =========================================================
+   💰 FORMATO DE MONEDA EN INPUTS (visual, no altera el valor)
+   ========================================================= */
+function attachMoneyFormatter(input) {
+    input.addEventListener('blur', () => {
+        const val = parseFloat(input.value);
+        if (!isNaN(val) && val > 0) {
+            input.dataset.rawValue = val;
+            input.style.fontWeight = '700';
+            input.style.color = 'var(--success)';
+        }
+    });
+    input.addEventListener('focus', () => {
+        input.style.fontWeight = '';
+        input.style.color = '';
+    });
+    input.addEventListener('input', () => {
+        let v = input.value.replace(/[^\d.]/g, '');
+        const parts = v.split('.');
+        if (parts.length > 2) v = parts[0] + '.' + parts.slice(1).join('');
+        if (parts[1] && parts[1].length > 2) v = parts[0] + '.' + parts[1].slice(0, 2);
+        input.value = v;
+    });
+}
+
+/* =========================================================
    8️⃣ PERSISTENCIA (localStorage + Firebase)
    ========================================================= */
 function loadUsers() {
@@ -579,10 +608,8 @@ function renderUserDropdown() {
         return;
     }
 
-    // 🔥 Leer el último usuario activo guardado
     const lastActiveUid = localStorage.getItem(STORAGE_KEYS.ACTIVE_UID);
 
-    // 🔥 Ordenar: primero el último activo, luego el resto alfabéticamente
     const sorted = [...users].sort((a, b) => {
         if (a.id === lastActiveUid) return -1;
         if (b.id === lastActiveUid) return 1;
@@ -597,7 +624,6 @@ function renderUserDropdown() {
         userSelectDropdown.appendChild(opt);
     });
 
-    // 🔥 Preseleccionar el último usuario activo
     if (lastActiveUid && users.some(u => u.id === lastActiveUid)) {
         userSelectDropdown.value = lastActiveUid;
     }
@@ -617,7 +643,6 @@ function validateNewUser(name, cedula, phone, pwd, pwdConfirm) {
     return null;
 }
 
-/* 🔐 createUser: encripta la contraseña con bcrypt */
 function createUser(name, cedula, phone, password) {
     const hashedPassword = hashearPassword(password);
 
@@ -645,7 +670,6 @@ function createUser(name, cedula, phone, password) {
     return newUser;
 }
 
-/* 🔐 loginUser: verifica contraseña con bcrypt */
 function loginUser(uid, password) {
     const user = users.find(u => u.id === uid);
     if (!user) return { ok: false, msg: 'Usuario no encontrado.' };
@@ -657,21 +681,18 @@ function loginUser(uid, password) {
     return { ok: true, user };
 }
 
-/* 🔐 doLogin: migra contraseñas viejas + guarda como último usuario */
 async function doLogin(uid, password) {
     const result = loginUser(uid, password);
     if (!result.ok) { showLoginMessage('❌ ' + result.msg, true); return; }
 
     currentUser = result.user;
 
-    // 🔐 Migración automática a bcrypt si la contraseña vieja era texto plano
     if (!esHashBcrypt(currentUser.password)) {
         console.log("🔐 Migrando contraseña de texto plano a bcrypt para:", currentUser.name);
         currentUser.password = hashearPassword(password);
         saveUsers();
     }
 
-    // 🔥 Guardar como último usuario activo
     setActiveUid(currentUser.id);
     showLoginMessage('⏳ Cargando datos...', false, 1500);
 
@@ -686,8 +707,6 @@ async function doLogin(uid, password) {
 
 function logout() {
     settingsModal.classList.remove('active');
-    // 🔥 NO borramos el ACTIVE_UID: se mantiene para que al reabrir se preseleccione
-    // setActiveUid(null);
     currentUser = null;
     appBalance = 0;
     appHistory = [];
@@ -963,6 +982,7 @@ function updateWithdrawAvailability() {
         withdrawCardNote.textContent = '🚫 No tienes saldo disponible. No puedes retirar.';
     }
 }
+
 function renderHistory() {
     historyList.innerHTML = '';
     if (!appHistory.length) {
@@ -970,6 +990,7 @@ function renderHistory() {
         updateTotalsDisplay();
         return;
     }
+    
     const chronological = [...appHistory].sort((a, b) => a.timestamp - b.timestamp);
     let running = 0;
     const balanceMap = {};
@@ -978,8 +999,12 @@ function renderHistory() {
         else running -= m.amount;
         balanceMap[m.id] = running;
     });
+    
     const sorted = [...appHistory].sort((a, b) => b.timestamp - a.timestamp);
-    sorted.forEach(item => {
+    const toShow = sorted.slice(0, historyShownCount);
+    const hasMore = sorted.length > historyShownCount;
+    
+    toShow.forEach(item => {
         const li = document.createElement('li');
         li.className = `history-item ${item.type === 'income' ? 'ingreso' : 'retiro'}`;
         const d = new Date(item.timestamp);
@@ -1010,14 +1035,32 @@ function renderHistory() {
         `;
         historyList.appendChild(li);
     });
+    
+    if (hasMore) {
+        const loadMore = document.createElement('li');
+        loadMore.className = 'load-more-item';
+        loadMore.innerHTML = `
+            <button class="btn btn-outline btn-sm" id="loadMoreBtn" style="width:100%;">
+                📄 Cargar más (${sorted.length - historyShownCount} restantes)
+            </button>
+        `;
+        historyList.appendChild(loadMore);
+        $('loadMoreBtn').addEventListener('click', () => {
+            historyShownCount += HISTORY_PAGE_SIZE;
+            renderHistory();
+        });
+    }
+    
     historyList.querySelectorAll('[data-edit]').forEach(btn => {
         btn.addEventListener('click', () => editMovement(parseFloat(btn.dataset.edit)));
     });
     historyList.querySelectorAll('[data-delete]').forEach(btn => {
         btn.addEventListener('click', () => deleteMovement(parseFloat(btn.dataset.delete)));
     });
+    
     updateTotalsDisplay();
 }
+
 function renderUsersTab() {
     usersListContainer.innerHTML = '';
     if (!users.length) {
@@ -1182,7 +1225,6 @@ function confirmDeleteUser() {
         db.collection('usuarios_data').doc(pendingDeleteUid).delete()
             .catch(e => console.log("⚠️ No se pudo borrar datos en Firebase:", e.message));
     }
-    // Si el usuario eliminado era el último activo, limpiar el ACTIVE_UID
     if (localStorage.getItem(STORAGE_KEYS.ACTIVE_UID) === pendingDeleteUid) {
         localStorage.removeItem(STORAGE_KEYS.ACTIVE_UID);
     }
@@ -1201,7 +1243,10 @@ function switchTab(tabName) {
         tabContents[k].classList.toggle('active', k === tabName);
     });
     if (tabName === 'usuarios') renderUsersTab();
-    if (tabName === 'historial') updateTotalsDisplay();
+    if (tabName === 'historial') {
+        historyShownCount = HISTORY_PAGE_SIZE;
+        updateTotalsDisplay();
+    }
     if (tabName === 'banco') renderBankTab();
 }
 
@@ -1228,6 +1273,7 @@ function registerIncome() {
     incomeNoteSelect.value = '';
     incomeNoteCustom.value = '';
     incomeNoteCustom.classList.add('hidden');
+    historyShownCount = HISTORY_PAGE_SIZE;
     updateBalanceDisplay();
     renderHistory();
     showOperationMessage(`✅ Ingreso de ${formatRD(amount)} registrado.`, false);
@@ -1299,6 +1345,7 @@ function registerWithdraw() {
     withdrawNoteCustom.value = '';
     withdrawNoteCustom.classList.add('hidden');
     hideBankDestinationSelector();
+    historyShownCount = HISTORY_PAGE_SIZE;
 
     updateBalanceDisplay();
     renderHistory();
@@ -1356,6 +1403,7 @@ function saveEditedMovement() {
     else appBalance -= amount;
     saveUserData();
     guardarUsuarioEnFirebase(currentUser.id);
+    historyShownCount = HISTORY_PAGE_SIZE;
     updateBalanceDisplay();
     renderHistory();
     closeMovementModal();
@@ -1370,6 +1418,7 @@ function deleteMovement(id) {
     appHistory = appHistory.filter(m => m.id !== id);
     saveUserData();
     guardarUsuarioEnFirebase(currentUser.id);
+    historyShownCount = HISTORY_PAGE_SIZE;
     updateBalanceDisplay();
     renderHistory();
     showOperationMessage('Movimiento eliminado.', false);
@@ -1387,6 +1436,7 @@ function clearHistory() {
     appHistory = [];
     saveUserData();
     guardarUsuarioEnFirebase(currentUser.id);
+    historyShownCount = HISTORY_PAGE_SIZE;
     renderHistory();
     updateBalanceDisplay();
     showOperationMessage('Historial eliminado correctamente.', false);
@@ -1420,6 +1470,7 @@ function confirmResetAll() {
     appHistory = [];
     saveUserData();
     guardarUsuarioEnFirebase(currentUser.id);
+    historyShownCount = HISTORY_PAGE_SIZE;
     updateBalanceDisplay();
     renderHistory();
     closeResetConfirmModal();
@@ -1517,6 +1568,118 @@ function saveNewUserFromModal() {
 }
 
 /* =========================================================
+   💾 BACKUP: EXPORTAR / IMPORTAR JSON
+   ========================================================= */
+function exportBackup() {
+    if (!currentUser) return;
+    const backup = {
+        app: 'Control Financiero RD',
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        user: {
+            id: currentUser.id,
+            name: currentUser.name,
+            cedula: currentUser.cedula,
+            phone: currentUser.phone
+        },
+        data: {
+            balance: appBalance,
+            history: appHistory,
+            banks: appBanks,
+            theme: getUserTheme(currentUser.id),
+            color: getUserColor(currentUser.id)
+        }
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const fecha = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `backup_${currentUser.name.replace(/\s+/g, '_')}_${fecha}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showOperationMessage('✅ Respaldo descargado correctamente.', false);
+}
+
+function importBackup() {
+    $('importBackupFile').click();
+}
+
+function handleImportFile(event) {
+    const file = event.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        try {
+            const backup = JSON.parse(e.target.result);
+            if (!backup.app || !backup.data || !backup.user) {
+                throw new Error('Archivo inválido');
+            }
+            if (!confirm(`⚠️ Esto REEMPLAZARÁ todos los datos actuales de ${currentUser.name} con los del respaldo de ${backup.user.name}.\n\n¿Continuar?`)) {
+                event.target.value = '';
+                return;
+            }
+            appBalance = Number(backup.data.balance) || 0;
+            appHistory = Array.isArray(backup.data.history) ? backup.data.history : [];
+            appBanks = Array.isArray(backup.data.banks) ? backup.data.banks : [];
+            if (backup.data.theme) setUserTheme(currentUser.id, backup.data.theme);
+            if (backup.data.color) setUserColor(currentUser.id, backup.data.color);
+            saveUserData();
+            guardarUsuarioEnFirebase(currentUser.id);
+            applyUserTheme(currentUser.id);
+            historyShownCount = HISTORY_PAGE_SIZE;
+            updateBalanceDisplay();
+            renderHistory();
+            renderBankTab();
+            showOperationMessage('✅ Respaldo restaurado correctamente.', false);
+        } catch (err) {
+            showOperationMessage('❌ Archivo de respaldo inválido o corrupto.', true);
+            console.error(err);
+        }
+        event.target.value = '';
+    };
+    reader.readAsText(file);
+}
+
+/* =========================================================
+   📊 EXPORTAR HISTORIAL A CSV (Excel)
+   ========================================================= */
+function exportHistoryToCSV() {
+    if (!appHistory.length) {
+        showOperationMessage('❌ No hay historial para exportar.', true);
+        return;
+    }
+    const sorted = [...appHistory].sort((a, b) => a.timestamp - b.timestamp);
+    const rows = [['Fecha', 'Tipo', 'Categoría', 'Monto (RD$)', 'Saldo después']];
+    
+    let running = 0;
+    sorted.forEach(m => {
+        if (m.type === 'income') running += m.amount;
+        else running -= m.amount;
+        const fecha = new Date(m.timestamp).toLocaleString('es-DO');
+        const tipo = m.type === 'income' ? 'Ingreso' : 'Retiro';
+        const nota = (m.note || '').replace(/,/g, ';').replace(/\n/g, ' ');
+        rows.push([fecha, tipo, nota, m.amount.toFixed(2), running.toFixed(2)]);
+    });
+    
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const fecha = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `historial_${currentUser.name.replace(/\s+/g, '_')}_${fecha}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showOperationMessage('✅ Historial exportado a Excel.', false);
+}
+
+/* =========================================================
    2️⃣6️⃣ EVENTOS
    ========================================================= */
 function setupEvents() {
@@ -1531,6 +1694,12 @@ function setupEvents() {
     attachNameFormatter(nuName);
     attachCedulaFormatter(nuCedula);
     attachPhoneFormatter(nuPhone);
+
+    // 💰 Formato de moneda en inputs numéricos
+    attachMoneyFormatter(incomeAmount);
+    attachMoneyFormatter(withdrawAmount);
+    attachMoneyFormatter(bankAmount);
+    attachMoneyFormatter(movementAmountInput);
 
     fillNoteSelect(incomeNoteSelect, INCOME_CATEGORIES);
     fillNoteSelect(withdrawNoteSelect, WITHDRAW_CATEGORIES);
@@ -1619,6 +1788,11 @@ function setupEvents() {
     clearHistoryBtn.addEventListener('click', clearHistory);
     resetAllHistoryBtn.addEventListener('click', openResetConfirmModal);
 
+    // 📊 Exportar historial a CSV
+    if ($('exportCsvBtn')) {
+        $('exportCsvBtn').addEventListener('click', exportHistoryToCSV);
+    }
+
     addBankBtn.addEventListener('click', () => openBankModal(null));
     saveBankBtn.addEventListener('click', saveBankAccount);
     cancelBankBtn.addEventListener('click', closeBankModal);
@@ -1700,6 +1874,23 @@ function setupEvents() {
     });
 
     logoutBtn.addEventListener('click', logout);
+
+    // 💾 Backup exportar/importar
+    if ($('exportBackupBtn')) {
+        $('exportBackupBtn').addEventListener('click', () => {
+            settingsModal.classList.remove('active');
+            exportBackup();
+        });
+    }
+    if ($('importBackupBtn')) {
+        $('importBackupBtn').addEventListener('click', () => {
+            settingsModal.classList.remove('active');
+            importBackup();
+        });
+    }
+    if ($('importBackupFile')) {
+        $('importBackupFile').addEventListener('change', handleImportFile);
+    }
 }
 
 /* =========================================================
@@ -1735,7 +1926,7 @@ async function init() {
 
     const activeUid = localStorage.getItem(STORAGE_KEYS.ACTIVE_UID);
     if (activeUid && users.find(u => u.id === activeUid)) {
-        showSelectUserScreen();   // el dropdown mostrará ese usuario primero + seleccionado
+        showSelectUserScreen();
     } else if (users.length === 0) {
         showFirstUserScreen();
     } else {
