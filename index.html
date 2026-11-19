@@ -10,6 +10,9 @@
 <link rel="manifest" href="manifest.json">
 
 <meta name="theme-color" content="#2E7D32">
+
+<!-- 🔐 bcrypt para encriptar contraseñas (debe cargarse ANTES de app.js) -->
+<script src="https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js"></script>
 </head>
 <body>
 <div class="app-container" id="appContainer">
@@ -468,6 +471,7 @@
             <li><b>👁️ Ojo:</b> en todos los campos de contraseña puedes pulsar el ojo para mostrar/ocultar.</li>
             <li><b>🚫 Retiros:</b> no se permite retirar más de lo que tienes en el saldo.</li>
             <li><b>📋 Historial:</b> totales, y en cada retiro el saldo que queda después de ese retiro.</li>
+            <li><b>🔐 Seguridad:</b> las contraseñas se guardan encriptadas con bcrypt, nunca en texto plano.</li>
             <li><b>🗑️ Eliminar usuario:</b> pide tu contraseña para confirmar.</li>
             <li><b>🔄 Resetear todo a cero:</b> pide contraseña y pone saldo + historial en cero (mantiene banco y colores).</li>
         </ul>
@@ -477,10 +481,11 @@
     </div>
 </div>
 
+<!-- 🔥 SDKs de Firebase (deben cargarse antes de app.js) -->
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 
-
+<!-- Tu aplicación -->
 <script src="app.js"></script>
 </body>
 </html>
