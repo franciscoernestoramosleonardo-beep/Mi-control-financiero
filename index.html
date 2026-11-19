@@ -404,6 +404,13 @@
                 </span>
             </button>
             <input type="file" id="importBackupFile" accept=".json" style="display:none;">
+            <button class="settings-item" id="forceUpdateBtn" style="border-color:var(--warning-border);">
+                <span class="icon">🔄</span>
+                <span class="info">
+                    <div class="title" style="color:var(--warning-text);">Forzar actualización</div>
+                    <div class="desc">Borra el caché y recarga la app con la última versión</div>
+                </span>
+            </button>
             <button class="settings-item" id="openHelpBtn">
                 <span class="icon">❓</span>
                 <span class="info">
@@ -519,6 +526,7 @@
             <li><b>🔐 Seguridad:</b> las contraseñas se guardan encriptadas con bcrypt, nunca en texto plano.</li>
             <li><b>💾 Respaldo:</b> exporta tus datos a un archivo JSON y restaura cuando quieras.</li>
             <li><b>📊 Exportar a Excel:</b> descarga tu historial en formato CSV compatible con Excel.</li>
+            <li><b>🔄 Forzar actualización:</b> si la app no se actualiza automáticamente, usa este botón para borrar el caché y recargar.</li>
             <li><b>📱 PWA:</b> puedes instalar esta app en tu celular desde el menú del navegador.</li>
         </ul>
         <div class="modal-actions">
@@ -534,13 +542,42 @@
 <!-- Tu aplicación -->
 <script src="app.js"></script>
 
-<!-- 📱 Service Worker para PWA -->
+<!-- 📱 Service Worker para PWA con detección de actualizaciones -->
 <script>
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('✅ Service Worker registrado. App instalable.'))
+            .then(reg => {
+                console.log('✅ Service Worker registrado. App instalable.');
+                
+                // Detectar cuando hay una nueva versión disponible
+                reg.addEventListener('updatefound', () => {
+                    const newWorker = reg.installing;
+                    console.log('🆕 Nueva versión del Service Worker detectada');
+                    
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            // Hay una nueva versión esperando
+                            if (confirm('🆕 Hay una nueva versión de la app disponible.\n\n¿Recargar ahora para actualizar?')) {
+                                // Limpiar cachés viejas
+                                caches.keys().then(keys => {
+                                    keys.forEach(key => caches.delete(key));
+                                });
+                                // Recargar
+                                window.location.reload();
+                            }
+                        }
+                    });
+                });
+            })
             .catch(err => console.warn('⚠️ SW error:', err));
+        
+        // Verificar actualizaciones cada 10 minutos
+        setInterval(() => {
+            navigator.serviceWorker.getRegistration().then(reg => {
+                if (reg) reg.update();
+            });
+        }, 10 * 60 * 1000);
     });
 }
 </script>

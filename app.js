@@ -363,10 +363,8 @@ function changeMasterPassword(currentPwd, newPwd) {
 }
 
 /* =========================================================
-   🔍 BÚSQUEDA INTELIGENTE (CÉDULA / TELÉFONO / NOMBRE)
+   🔍 BÚSQUEDA INTELIGENTE
    ========================================================= */
-
-// 🆕 Detecta el tipo de búsqueda según el formato
 function detectSearchType(query) {
     const clean = query.replace(/\D/g, '');
     if (clean.length === 11) return 'cedula';
@@ -375,7 +373,6 @@ function detectSearchType(query) {
     return 'otro';
 }
 
-// 🆕 Formatea automáticamente según el tipo detectado
 function autoFormatSearchInput(value) {
     const type = detectSearchType(value);
     const clean = value.replace(/\D/g, '');
@@ -389,7 +386,6 @@ function autoFormatSearchInput(value) {
     return value;
 }
 
-// 🆕 Actualiza el indicador visual del tipo de búsqueda
 function updateSearchTypeIndicator(query) {
     const indicator = $('searchTypeIndicator');
     if (!indicator) return;
@@ -418,7 +414,6 @@ function updateSearchTypeIndicator(query) {
     }
 }
 
-// 🆕 Búsqueda inteligente que normaliza cédulas y teléfonos
 function searchUser(query) {
     query = query.trim();
     if (query.length < 2) return [];
@@ -428,21 +423,17 @@ function searchUser(query) {
     const queryLower = query.toLowerCase();
     
     return users.filter(u => {
-        // Si es cédula: comparar solo los dígitos
         if (type === 'cedula') {
             const userCedulaClean = u.cedula.replace(/\D/g, '');
             return userCedulaClean.includes(cleanQuery) || cleanQuery.includes(userCedulaClean);
         }
-        // Si es teléfono: comparar solo los dígitos
         if (type === 'telefono') {
             const userPhoneClean = u.phone.replace(/\D/g, '');
             return userPhoneClean.includes(cleanQuery) || cleanQuery.includes(userPhoneClean);
         }
-        // Si es nombre: búsqueda por texto (con o sin acentos)
         if (type === 'nombre') {
             return u.name.toLowerCase().includes(queryLower);
         }
-        // Búsqueda genérica: comparar en todos los campos
         return u.name.toLowerCase().includes(queryLower) ||
                u.cedula.toLowerCase().includes(queryLower) ||
                u.phone.toLowerCase().includes(queryLower) ||
@@ -1793,12 +1784,10 @@ function setupEvents() {
     fillNoteSelect(withdrawNoteSelect, WITHDRAW_CATEGORIES);
     fillBankSelect();
 
-    // 🔍 BÚSQUEDA INTELIGENTE CON FORMATO AUTOMÁTICO
     userSearchInput.addEventListener('input', () => {
         const rawValue = userSearchInput.value;
         const type = detectSearchType(rawValue);
         
-        // Auto-formatear si es cédula o teléfono completo
         const clean = rawValue.replace(/\D/g, '');
         if (type === 'cedula' && clean.length === 11) {
             const formatted = autoFormatSearchInput(rawValue);
@@ -2016,6 +2005,33 @@ function setupEvents() {
     }
     if ($('importBackupFile')) {
         $('importBackupFile').addEventListener('change', handleImportFile);
+    }
+
+    // 🔄 Forzar actualización de la app
+    if ($('forceUpdateBtn')) {
+        $('forceUpdateBtn').addEventListener('click', () => {
+            if (!confirm('🔄 Esto borrará el caché y recargará la app.\n\n¿Continuar?')) return;
+            
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                navigator.serviceWorker.controller.postMessage('CLEAR_CACHE');
+            }
+            
+            if ('caches' in window) {
+                caches.keys().then(keys => {
+                    keys.forEach(key => caches.delete(key));
+                });
+            }
+            
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(regs => {
+                    regs.forEach(reg => reg.unregister());
+                });
+            }
+            
+            setTimeout(() => {
+                window.location.href = window.location.href + '?v=' + Date.now();
+            }, 500);
+        });
     }
 }
 
