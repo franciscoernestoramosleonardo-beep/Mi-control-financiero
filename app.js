@@ -315,6 +315,37 @@ function showMsg(el, text, isError = true, timeout = 4000) {
 function showOperationMessage(text, isError = false) { showMsg(operationMessage, text, isError, 3500); }
 function showLoginMessage(text, isError = true) { showMsg(selectUserMessage, text, isError, 4000); }
 
+/* 🔐 Verifica contraseña con bcrypt, con compatibilidad para usuarios viejos */
+function verificarPassword(inputPwd, storedPassword) {
+    if (!storedPassword) return false;
+    try {
+        // Si el storedPassword es un hash bcrypt válido
+        if (/^\$2[aby]\$/.test(storedPassword)) {
+            return bcrypt.compareSync(inputPwd, storedPassword);
+        }
+        // Si no (usuario viejo con texto plano), comparación directa
+        return inputPwd === storedPassword;
+    } catch (e) {
+        console.warn("⚠️ Error verificando contraseña:", e.message);
+        return inputPwd === storedPassword;
+    }
+}
+
+/* 🔐 Encripta una contraseña con bcrypt */
+function hashearPassword(password) {
+    try {
+        return bcrypt.hashSync(password, 10);
+    } catch (e) {
+        console.error("❌ Error encriptando contraseña:", e.message);
+        return password; // fallback (no debería ocurrir)
+    }
+}
+
+/* 🔐 Detecta si una contraseña YA está encriptada */
+function esHashBcrypt(pwd) {
+    return typeof pwd === 'string' && /^\$2[aby]\$/.test(pwd);
+}
+
 /* =========================================================
    6️⃣ OJO CONTRASEÑAS
    ========================================================= */
@@ -420,9 +451,8 @@ function setActiveUid(uid) {
     else localStorage.removeItem(STORAGE_KEYS.ACTIVE_UID);
 }
 
-/* 🔥 VERSIÓN CORREGIDA: espera a Firebase ANTES de mostrar la UI */
+/* Espera a Firebase ANTES de mostrar la UI */
 async function loadUserData(uid) {
-    // 1. Cargar desde localStorage (respaldo rápido)
     const b = localStorage.getItem(STORAGE_KEYS.BALANCE + uid);
     appBalance = b !== null ? parseFloat(b) : 0;
     if (isNaN(appBalance)) appBalance = 0;
@@ -435,7 +465,6 @@ async function loadUserData(uid) {
         if (!Array.isArray(appBanks)) appBanks = [];
     } catch { appBanks = []; }
 
-    // 2. Traer datos de Firebase. Si Firebase tiene algo, GANA.
     if (db) {
         const ok = await cargarUsuarioDesdeFirebase(uid);
         if (ok) {
@@ -572,10 +601,14 @@ function validateNewUser(name, cedula, phone, pwd, pwdConfirm) {
     if (users.some(u => u.cedula === cedula)) return 'Ya existe un usuario con esa cédula.';
     return null;
 }
+
+/* 🔐 createUser: encripta la contraseña con bcrypt */
 function createUser(name, cedula, phone, password) {
+    const hashedPassword = hashearPassword(password);
+
     const newUser = {
         id: generateId(), name: name.trim(), cedula: cedula.trim(),
-        phone: phone.trim(), password: password
+        phone: phone.trim(), password: hashedPassword   // ✅ encriptada
     };
     users.push(newUser);
     saveUsers();
@@ -594,23 +627,37 @@ function createUser(name, cedula, phone, password) {
     guardarUsuarioEnFirebase(newUser.id);
     currentUser = tempUser;
 
+    console.log("🔐 Usuario creado con contraseña encriptada:", newUser.name);
     return newUser;
 }
+
+/* 🔐 loginUser: verifica contraseña con bcrypt */
 function loginUser(uid, password) {
     const user = users.find(u => u.id === uid);
     if (!user) return { ok: false, msg: 'Usuario no encontrado.' };
-    if (user.password !== password) return { ok: false, msg: 'Contraseña incorrecta.' };
+
+    if (!verificarPassword(password, user.password)) {
+        return { ok: false, msg: 'Contraseña incorrecta.' };
+    }
+
     return { ok: true, user };
 }
 
-/* 🔥 AHORA ES ASYNC: espera a loadUserData antes de mostrar la pantalla */
+/* 🔐 doLogin: migra contraseñas viejas a bcrypt al iniciar sesión */
 async function doLogin(uid, password) {
     const result = loginUser(uid, password);
     if (!result.ok) { showLoginMessage('❌ ' + result.msg, true); return; }
 
     currentUser = result.user;
-    setActiveUid(currentUser.id);
 
+    // 🔐 MIGRACIÓN AUTOMÁTICA: si la contraseña no es un hash bcrypt, encriptarla ahora
+    if (!esHashBcrypt(currentUser.password)) {
+        console.log("🔐 Migrando contraseña de texto plano a bcrypt para:", currentUser.name);
+        currentUser.password = hashearPassword(password);
+        saveUsers();   // guarda en localStorage + Firebase
+    }
+
+    setActiveUid(currentUser.id);
     showLoginMessage('⏳ Cargando datos...', false, 1500);
 
     try {
@@ -1026,17 +1073,26 @@ function closeSwitchUserModal() {
     switchUserMessage.classList.add('hidden');
 }
 
-/* 🔥 AHORA ES ASYNC: espera a loadUserData antes de mostrar la pantalla */
+/* 🔐 confirmSwitchUser: verifica con bcrypt + migra si es vieja */
 async function confirmSwitchUser() {
     if (!pendingSwitchUid) return;
     const target = users.find(u => u.id === pendingSwitchUid);
     if (!target) return;
     const pwd = switchUserPassword.value;
-    if (pwd !== target.password) {
+
+    if (!verificarPassword(pwd, target.password)) {
         showMsg(switchUserMessage, '❌ Contraseña incorrecta.', true, 3000);
         switchUserPassword.value = '';
         return;
     }
+
+    // 🔐 Migración automática si es contraseña vieja
+    if (!esHashBcrypt(target.password)) {
+        console.log("🔐 Migrando contraseña a bcrypt para:", target.name);
+        target.password = hashearPassword(pwd);
+        saveUsers();
+    }
+
     currentUser = target;
     setActiveUid(target.id);
 
@@ -1077,6 +1133,8 @@ function closeDeleteUserModal() {
     pendingDeleteUid = null;
     deleteUserMessage.classList.add('hidden');
 }
+
+/* 🔐 confirmDeleteUser: verifica con bcrypt */
 function confirmDeleteUser() {
     if (!pendingDeleteUid) return;
     if (!currentUser) {
@@ -1088,7 +1146,7 @@ function confirmDeleteUser() {
         showMsg(deleteUserMessage, 'Debes ingresar tu contraseña para continuar.', true, 3000);
         return;
     }
-    if (pwd !== currentUser.password) {
+    if (!verificarPassword(pwd, currentUser.password)) {
         showMsg(deleteUserMessage, '❌ Contraseña incorrecta. No se ha eliminado nada.', true, 3000);
         deleteUserPassword.value = '';
         return;
@@ -1328,13 +1386,15 @@ function closeResetConfirmModal() {
     resetPasswordInput.value = '';
     resetConfirmMessage.classList.add('hidden');
 }
+
+/* 🔐 confirmResetAll: verifica con bcrypt */
 function confirmResetAll() {
     const pwd = resetPasswordInput.value.trim();
     if (!pwd) {
         showMsg(resetConfirmMessage, 'Debes ingresar tu contraseña para continuar.', true, 3500);
         return;
     }
-    if (pwd !== currentUser.password) {
+    if (!verificarPassword(pwd, currentUser.password)) {
         showMsg(resetConfirmMessage, '❌ Contraseña incorrecta. No se ha reseteado nada.', true, 3500);
         resetPasswordInput.value = '';
         return;
@@ -1353,6 +1413,7 @@ function confirmResetAll() {
 /* =========================================================
    2️⃣3️⃣ CAMBIO DE CONTRASEÑA
    ========================================================= */
+/* 🔐 changePassword: verifica actual con bcrypt + encripta la nueva */
 function changePassword() {
     const current = currentPasswordInput.value.trim();
     const nueva = newPasswordInput.value.trim();
@@ -1360,7 +1421,7 @@ function changePassword() {
     if (!current || !nueva || !conf) {
         showMsg(passwordChangeMessage, 'Todos los campos son obligatorios.', true); return;
     }
-    if (current !== currentUser.password) {
+    if (!verificarPassword(current, currentUser.password)) {
         showMsg(passwordChangeMessage, 'La contraseña actual es incorrecta.', true); return;
     }
     if (nueva.length < 4) {
@@ -1369,8 +1430,9 @@ function changePassword() {
     if (nueva !== conf) {
         showMsg(passwordChangeMessage, 'Las dos contraseñas nuevas no coinciden.', true); return;
     }
-    currentUser.password = nueva;
+    currentUser.password = hashearPassword(nueva);
     saveUsers();
+    console.log("🔐 Contraseña actualizada y encriptada para:", currentUser.name);
     showMsg(passwordChangeMessage, '✅ Contraseña actualizada correctamente.', false);
     setTimeout(() => {
         passwordModal.classList.remove('active');
@@ -1485,7 +1547,6 @@ function setupEvents() {
         }
     });
 
-    /* 🔥 AHORA ASYNC: espera a que Firebase cargue antes de mostrar la pantalla */
     fuCreateBtn.addEventListener('click', async () => {
         const name = fuName.value.trim();
         const cedula = fuCedula.value.trim();
@@ -1501,7 +1562,6 @@ function setupEvents() {
         showMainScreen();
     });
 
-    /* 🔥 AHORA ASYNC: usa doLogin async */
     userLoginBtn.addEventListener('click', async () => {
         const uid = userSelectDropdown.value;
         const pwd = userLoginPassword.value;
@@ -1632,6 +1692,13 @@ function setupEvents() {
 async function init() {
     if (_initDone) return;
     _initDone = true;
+
+    // Verificar que bcrypt esté disponible
+    if (typeof bcrypt === 'undefined') {
+        console.error("❌ bcrypt NO está cargado. Revisa el <script> en el <head> de index.html");
+    } else {
+        console.log("🔐 bcrypt cargado correctamente");
+    }
 
     loadUsers();
     setupEvents();
